@@ -662,8 +662,24 @@ def api_store_buy():
         if is_sr_vip and username_input:
             notes_dict["requested_username"] = username_input
         
-        c.execute("INSERT INTO store_orders(customer_username, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                  (u, p[2], pmethod, snum, trx, proof_base64, final_status, json.dumps(notes_dict), datetime.datetime.utcnow().isoformat()))
+        c.execute("PRAGMA table_info(store_orders)")
+        cols = [col[1] for col in c.fetchall()]
+        
+        insert_cols = ["customer_username", "total_amount", "payment_method", "sender_number", "transaction_id", "payment_screenshot", "status", "notes", "created_at"]
+        insert_vals = [u, p[2], pmethod, snum, trx, proof_base64, final_status, json.dumps(notes_dict), datetime.datetime.utcnow().isoformat()]
+        
+        if 'app_name' in cols:
+            insert_cols.append("app_name")
+            insert_vals.append(p[0])
+            
+        if 'duration_days' in cols:
+            insert_cols.append("duration_days")
+            insert_vals.append(p[1])
+            
+        placeholders = ",".join(["?"] * len(insert_vals))
+        col_names = ",".join(insert_cols)
+        
+        c.execute(f"INSERT INTO store_orders({col_names}) VALUES ({placeholders})", tuple(insert_vals))
     
         conn.commit()
         conn.close()
