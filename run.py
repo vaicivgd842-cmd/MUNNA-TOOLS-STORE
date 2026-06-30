@@ -20,8 +20,21 @@ with app.app_context():
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
+    
     _startup_init()     # init_db() + ensure_super_admin() with retry
-    init_store_db()
+    
+    # Add retry logic for init_store_db to handle concurrent gunicorn workers
+    import time
+    import sqlite3
+    for _i in range(12):
+        try:
+            init_store_db()
+            break
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e).lower() or "readonly" in str(e).lower():
+                time.sleep(5)
+            else:
+                raise
 
 
 if __name__ == "__main__":
