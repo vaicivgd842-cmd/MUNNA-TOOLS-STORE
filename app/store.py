@@ -1000,6 +1000,35 @@ def api_admin_store_delete_pricing():
     c.execute("DELETE FROM store_bot_pricing WHERE id=?", (pid,)); conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "Bot removed from store."})
 
+@store_bp.route("/api/admin/store/update_license", methods=["POST"])
+def api_admin_store_update_license():
+    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    d = request.get_json() or {}
+    username = d.get("username")
+    expiry = d.get("expiry_date")
+    status = d.get("status")
+    if not username: return jsonify({"status": "error", "message": "Missing username"})
+    
+    conn = db_conn(); c = conn.cursor()
+    c.execute("UPDATE users SET expiry_date=?, status=? WHERE username=?", (expiry, status, username))
+    conn.commit(); conn.close()
+    return jsonify({"status": "ok", "message": "License updated successfully"})
+
+@store_bp.route("/api/admin/store/delete_license", methods=["POST"])
+def api_admin_store_delete_license():
+    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    username = (request.get_json() or {}).get("username")
+    if not username: return jsonify({"status": "error"})
+    
+    conn = db_conn(); c = conn.cursor()
+    c.execute("DELETE FROM users WHERE username=?", (username,))
+    # Also delete user bot blocks and macros if any
+    try:
+        c.execute("DELETE FROM user_bot_blocks WHERE username=?", (username,))
+    except: pass
+    conn.commit(); conn.close()
+    return jsonify({"status": "ok", "message": "License deleted successfully"})
+
 @store_bp.route("/api/admin/store/licenses", methods=["GET"])
 def api_admin_store_licenses():
     if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
@@ -1062,6 +1091,9 @@ def api_admin_store_vip_licenses():
 def api_admin_store_orders():
     if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
+    c.execute("SELECT app_name, required_version FROM bots")
+    main_bots_map = {r[0]: r[1] for r in c.fetchall()}
+
     c.execute("SELECT id, customer_username, notes, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, created_at FROM store_orders ORDER BY id DESC")
     data = []
     for r in c.fetchall():
@@ -1069,7 +1101,8 @@ def api_admin_store_orders():
             n = json.loads(r[2]) if r[2] else {}
         except:
             n = {}
-        data.append({"id": r[0], "customer": r[1], "app_name": n.get("app_name", ""), "days": n.get("duration_days", 0), "price": r[3], "payment_method": r[4], "sender_number": r[5], "transaction_id": r[6], "payment_screenshot": r[7], "status": r[8], "created_at": r[9], "notes": r[2]})
+        app_name = n.get("app_name", "")
+        data.append({"id": r[0], "customer": r[1], "app_name": app_name, "version": main_bots_map.get(app_name, "1.0"), "days": n.get("duration_days", 0), "price": r[3], "payment_method": r[4], "sender_number": r[5], "transaction_id": r[6], "payment_screenshot": r[7], "status": r[8], "created_at": r[9], "notes": r[2]})
     conn.close()
     return jsonify({"status": "ok", "data": data})
 

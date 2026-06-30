@@ -490,6 +490,37 @@
   </div>
 </div>
 
+<!-- Add/Edit License Modal -->
+<div class="modal fade" id="editLicenseModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title text-info fw-bold"><i class="bi bi-pencil-square"></i> Edit License</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="el_username">
+        <div class="mb-3">
+          <label class="form-label text-secondary" style="font-size: 0.8rem;">Username</label>
+          <input type="text" id="el_username_disp" class="form-control form-control-sm bg-dark text-white border-secondary" disabled>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-secondary" style="font-size: 0.8rem;">Expiry Date</label>
+          <input type="text" id="el_expiry" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-secondary" style="font-size: 0.8rem;">Status</label>
+          <select id="el_status" class="form-select form-select-sm bg-dark text-white border-secondary">
+            <option value="ENABLED">ENABLED</option>
+            <option value="DISABLED">DISABLED</option>
+          </select>
+        </div>
+        <button class="btn btn-sm btn-info w-100 fw-bold rounded-pill" onclick="saveLicenseEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Add/Edit Gateway Modal -->
 <div class="modal fade" id="gatewayModal" tabindex="-1">
   <div class="modal-dialog">
@@ -732,8 +763,8 @@
                   <td class="py-3 fw-bold text-${l.plan_type === 'VIP' ? 'warning' : 'info'}">${l.plan_type === 'VIP' ? '👑 VIP' : 'Regular'}</td>
                   <td class="py-3"><span class="badge" style="background: ${l.status==='ENABLED'?'rgba(32, 201, 151, 0.1)':'rgba(220, 53, 69, 0.1)'}; color: ${l.status==='ENABLED'?'#20c997':'#dc3545'}; border: 1px solid ${l.status==='ENABLED'?'rgba(32, 201, 151, 0.2)':'rgba(220, 53, 69, 0.2)'}; border-radius: 20px; padding: 5px 12px;">${l.status}</span></td>
                   <td class="py-3 px-4 text-end">
-                      <button class="btn btn-sm btn-outline-info rounded-circle me-1" style="width: 32px; height: 32px; padding: 0; background: rgba(13, 202, 240, 0.1); border: 0;"><i class="bi bi-pencil"></i></button>
-                      <button class="btn btn-sm btn-outline-danger rounded-circle" style="width: 32px; height: 32px; padding: 0; background: rgba(220, 53, 69, 0.1); border: 0;"><i class="bi bi-trash"></i></button>
+                      <button class="btn btn-sm btn-outline-info rounded-circle me-1" style="width: 32px; height: 32px; padding: 0; background: rgba(13, 202, 240, 0.1); border: 0;" onclick="openEditLicenseModal('${l.username}', '${l.expiry_date}', '${l.status}')"><i class="bi bi-pencil"></i></button>
+                      <button class="btn btn-sm btn-outline-danger rounded-circle" style="width: 32px; height: 32px; padding: 0; background: rgba(220, 53, 69, 0.1); border: 0;" onclick="deleteLicense('${l.username}')"><i class="bi bi-trash"></i></button>
                   </td>
               </tr>
             `).join('');
@@ -758,8 +789,8 @@
                   <td class="py-3 fw-bold text-warning">👑 VIP</td>
                   <td class="py-3"><span class="badge" style="background: ${l.status==='ENABLED'?'rgba(32, 201, 151, 0.1)':'rgba(220, 53, 69, 0.1)'}; color: ${l.status==='ENABLED'?'#20c997':'#dc3545'}; border: 1px solid ${l.status==='ENABLED'?'rgba(32, 201, 151, 0.2)':'rgba(220, 53, 69, 0.2)'}; border-radius: 20px; padding: 5px 12px;">${l.status}</span></td>
                   <td class="py-3 px-4 text-end">
-                      <button class="btn btn-sm btn-outline-info rounded-circle me-1" style="width: 32px; height: 32px; padding: 0; background: rgba(13, 202, 240, 0.1); border: 0;"><i class="bi bi-pencil"></i></button>
-                      <button class="btn btn-sm btn-outline-danger rounded-circle" style="width: 32px; height: 32px; padding: 0; background: rgba(220, 53, 69, 0.1); border: 0;"><i class="bi bi-trash"></i></button>
+                      <button class="btn btn-sm btn-outline-info rounded-circle me-1" style="width: 32px; height: 32px; padding: 0; background: rgba(13, 202, 240, 0.1); border: 0;" onclick="openEditLicenseModal('${l.username}', '${l.expiry_date}', '${l.status}')"><i class="bi bi-pencil"></i></button>
+                      <button class="btn btn-sm btn-outline-danger rounded-circle" style="width: 32px; height: 32px; padding: 0; background: rgba(220, 53, 69, 0.1); border: 0;" onclick="deleteLicense('${l.username}')"><i class="bi bi-trash"></i></button>
                   </td>
               </tr>
             `).join('');
@@ -1014,6 +1045,48 @@
   }
 
   let botPricingModalInstance;
+  function openEditLicenseModal(username, expiry, status) {
+      document.getElementById('el_username').value = username;
+      document.getElementById('el_username_disp').value = username;
+      document.getElementById('el_expiry').value = expiry ? expiry.substring(0, 10) : '';
+      document.getElementById('el_status').value = status;
+      new bootstrap.Modal(document.getElementById('editLicenseModal')).show();
+  }
+
+  async function saveLicenseEdit() {
+      let username = document.getElementById('el_username').value;
+      let expiry_date = document.getElementById('el_expiry').value;
+      let status = document.getElementById('el_status').value;
+      
+      let r = await fetch('/api/admin/store/update_license', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username, expiry_date, status})
+      });
+      let j = await r.json();
+      if(j.status === 'ok') {
+          showToast('Success', j.message, 'success');
+          bootstrap.Modal.getInstance(document.getElementById('editLicenseModal')).hide();
+          loadAdmin();
+      } else {
+          showToast('Error', j.message || 'Update failed', 'danger');
+      }
+  }
+
+  async function deleteLicense(username) {
+      if(!confirm(`Delete license ${username}? This will revoke access permanently.`)) return;
+      let r = await fetch('/api/admin/store/delete_license', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username})
+      });
+      let j = await r.json();
+      if(j.status === 'ok') {
+          showToast('Success', j.message, 'success');
+          loadAdmin();
+      } else {
+          showToast('Error', j.message || 'Delete failed', 'danger');
+      }
+  }
+
   function openBotPricingModal(index = -1) {
       if (!botPricingModalInstance) {
           botPricingModalInstance = new bootstrap.Modal(document.getElementById('botPricingModal'));
@@ -1389,7 +1462,7 @@
         <td class="py-3 text-white">${o.customer}</td>
         <td class="py-3">
           <div class="text-white fw-bold">${o.app_name} ${isVip ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; border-radius:10px;">👑 SR VIP</span>' : ''}</div>
-          <div class="text-secondary" style="font-size: 0.75rem;">${planMonths} <span class="text-info ms-1">v1.0</span></div>
+          <div class="text-secondary" style="font-size: 0.75rem;">${planMonths} <span class="text-info ms-1">v${o.version || '1.0'}</span></div>
         </td>
         <td class="py-3 text-success fw-bold">৳${o.price}</td>
         <td class="py-3">
