@@ -676,6 +676,10 @@ def api_store_buy():
             insert_cols.append("duration_days")
             insert_vals.append(p[1])
             
+        if 'price' in cols:
+            insert_cols.append("price")
+            insert_vals.append(p[2])
+            
         placeholders = ",".join(["?"] * len(insert_vals))
         col_names = ",".join(insert_cols)
         
