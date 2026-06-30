@@ -10,6 +10,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/store.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <!-- Toast Container -->
@@ -69,11 +70,30 @@
 
       <!-- Section: Dashboard -->
       <div id="sec-dashboard" class="store-section active">
-          <div class="row text-center mb-4">
-            <div class="col-md-3 mb-3"><div class="premium-card p-3 border-info"><h6 class="text-secondary">Total Customers</h6><h3 class="mb-0 text-info fw-bold" id="stat_customers">-</h3></div></div>
-            <div class="col-md-3 mb-3"><div class="premium-card p-3 border-success"><h6 class="text-secondary">Total Orders</h6><h3 class="mb-0 text-success fw-bold" id="stat_orders">-</h3></div></div>
-            <div class="col-md-3 mb-3"><div class="premium-card p-3 border-warning"><h6 class="text-secondary">Pending Orders</h6><h3 class="mb-0 text-warning fw-bold" id="stat_pending">-</h3></div></div>
-            <div class="col-md-3 mb-3"><div class="premium-card p-3 border-primary"><h6 class="text-secondary">Total Revenue</h6><h3 class="mb-0 text-primary fw-bold" id="stat_revenue">-</h3></div></div>
+          <div class="row text-center mb-4 g-2">
+            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('customers')"><h6 class="text-secondary mb-1"><i class="bi bi-people"></i> Total Customers</h6><h4 class="mb-0 text-info fw-bold" id="stat_customers">-</h4></div></div>
+            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-cart"></i> Total Orders</h6><h4 class="mb-0 text-success fw-bold" id="stat_orders">-</h4></div></div>
+            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-hourglass-split"></i> Pending Orders</h6><h4 class="mb-0 text-warning fw-bold" id="stat_pending">-</h4></div></div>
+            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center"><h6 class="text-secondary mb-1"><i class="bi bi-currency-dollar"></i> Total Revenue</h6><h4 class="mb-0 text-primary fw-bold" id="stat_revenue">-</h4></div></div>
+          </div>
+          
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <div class="premium-card p-3 h-100">
+                <h6 class="mb-3 text-white"><i class="bi bi-graph-up-arrow"></i> Revenue Growth (Last 30 Days)</h6>
+                <canvas id="chartStoreRevenue" height="200"></canvas>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="premium-card p-3 h-100">
+                <h6 class="mb-3 text-white"><i class="bi bi-pie-chart"></i> Popular Bots</h6>
+                <div class="d-flex justify-content-center align-items-center flex-grow-1" style="min-height: 200px;">
+                  <div style="width: 100%; max-width: 250px;">
+                    <canvas id="chartStoreBots" height="200"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="premium-card " >
@@ -797,9 +817,53 @@
         }
     }
   
+    let dashCharts = {};
+    async function loadDashboardCharts() {
+        try {
+            let r = await fetch('/api/admin/store/dashboard_charts');
+            let j = await r.json();
+            if(j.status !== 'ok') return;
+            
+            let d = j.data;
+            
+            // Revenue Chart
+            const ctxRev = document.getElementById('chartStoreRevenue');
+            if(ctxRev) {
+                if(!dashCharts.revenue) {
+                    dashCharts.revenue = new Chart(ctxRev, {
+                        type: 'line',
+                        data: { labels: d.revenue_growth.labels, datasets: [{ label: 'Revenue (৳)', data: d.revenue_growth.data, borderColor: '#0dcaf0', tension: 0.1, fill:true, backgroundColor:'rgba(13, 202, 240, 0.1)' }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid:{color:'rgba(255,255,255,0.05)'} }, x: { grid:{color:'rgba(255,255,255,0.05)'} } } }
+                    });
+                } else {
+                    dashCharts.revenue.data.labels = d.revenue_growth.labels;
+                    dashCharts.revenue.data.datasets[0].data = d.revenue_growth.data;
+                    dashCharts.revenue.update();
+                }
+            }
+            
+            // Bots Chart
+            const ctxBot = document.getElementById('chartStoreBots');
+            if(ctxBot) {
+                if(!dashCharts.bots) {
+                    dashCharts.bots = new Chart(ctxBot, {
+                        type: 'doughnut',
+                        data: { labels: d.bot_popularity.labels, datasets: [{ data: d.bot_popularity.data, backgroundColor: ['#0d6efd', '#dc3545', '#ffc107', '#198754', '#6c757d'] }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#a0aec0', font: { size: 10 } } } } }
+                    });
+                } else {
+                    dashCharts.bots.data.labels = d.bot_popularity.labels;
+                    dashCharts.bots.data.datasets[0].data = d.bot_popularity.data;
+                    dashCharts.bots.update();
+                }
+            }
+        } catch(e) { console.error('Dashboard charts error:', e); }
+    }
+
     async function loadAdmin() {
     // Load all sections independently — one failure must not block another
     loadDashboardStats();
+    loadDashboardCharts();
     loadOrders();
     loadPricing();
     loadCustomers();

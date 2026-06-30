@@ -752,6 +752,42 @@ def api_admin_store_dashboard_stats():
     conn.close()
     return jsonify({"status": "ok", "data": {"total_customers": tot_cust, "total_orders": tot_ord, "pending_orders": pend_ord, "total_revenue": round(revenue, 2)}})
 
+@store_bp.route("/api/admin/store/dashboard_charts", methods=["GET"])
+def api_admin_store_dashboard_charts():
+    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    conn = db_conn(); c = conn.cursor()
+    
+    # Revenue over last 30 days
+    c.execute("SELECT date(created_at), SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND created_at >= date('now', '-30 days') GROUP BY date(created_at) ORDER BY date(created_at)")
+    rev_data = c.fetchall()
+    
+    # Generate last 30 days labels
+    import datetime
+    labels = []
+    data_map = {r[0]: r[1] for r in rev_data}
+    data_points = []
+    
+    today = datetime.datetime.now().date()
+    for i in range(29, -1, -1):
+        d = (today - datetime.timedelta(days=i)).isoformat()
+        labels.append(d[5:]) # MM-DD
+        data_points.append(round(data_map.get(d, 0.0), 2))
+        
+    # Popular Bots
+    c.execute("SELECT json_extract(notes, '$.app_name'), COUNT(*) FROM store_orders WHERE status='APPROVED' AND notes IS NOT NULL GROUP BY json_extract(notes, '$.app_name') ORDER BY COUNT(*) DESC LIMIT 5")
+    bot_data = c.fetchall()
+    bot_labels = [r[0] for r in bot_data if r[0]]
+    bot_counts = [r[1] for r in bot_data if r[0]]
+    
+    conn.close()
+    return jsonify({
+        "status": "ok",
+        "data": {
+            "revenue_growth": {"labels": labels, "data": data_points},
+            "bot_popularity": {"labels": bot_labels, "data": bot_counts}
+        }
+    })
+
 @store_bp.route("/api/admin/store/customer_stats/<username>", methods=["GET"])
 def api_admin_store_customer_stats(username):
     if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
