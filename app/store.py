@@ -749,8 +749,17 @@ def api_admin_store_dashboard_stats():
     c.execute("SELECT COUNT(*) FROM store_orders"); tot_ord = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM store_orders WHERE status='PENDING'"); pend_ord = c.fetchone()[0]
     c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED'"); revenue = c.fetchone()[0] or 0.0
+    c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND date(created_at) = date('now')"); today_rev = c.fetchone()[0] or 0.0
+    c.execute("SELECT COUNT(DISTINCT app_name) FROM store_bot_pricing WHERE is_active=1"); active_bots = c.fetchone()[0] or 0
     conn.close()
-    return jsonify({"status": "ok", "data": {"total_customers": tot_cust, "total_orders": tot_ord, "pending_orders": pend_ord, "total_revenue": round(revenue, 2)}})
+    return jsonify({"status": "ok", "data": {
+        "total_customers": tot_cust, 
+        "total_orders": tot_ord, 
+        "pending_orders": pend_ord, 
+        "total_revenue": round(revenue, 2),
+        "today_revenue": round(today_rev, 2),
+        "active_bots": active_bots
+    }})
 
 @store_bp.route("/api/admin/store/dashboard_charts", methods=["GET"])
 def api_admin_store_dashboard_charts():

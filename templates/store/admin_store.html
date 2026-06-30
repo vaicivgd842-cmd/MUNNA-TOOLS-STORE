@@ -71,19 +71,15 @@
       <!-- Section: Dashboard -->
       <div id="sec-dashboard" class="store-section active">
           <div class="row text-center mb-4 g-2">
-            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('customers')"><h6 class="text-secondary mb-1"><i class="bi bi-people"></i> Total Customers</h6><h4 class="mb-0 text-info fw-bold" id="stat_customers">-</h4></div></div>
-            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-cart"></i> Total Orders</h6><h4 class="mb-0 text-success fw-bold" id="stat_orders">-</h4></div></div>
-            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-hourglass-split"></i> Pending Orders</h6><h4 class="mb-0 text-warning fw-bold" id="stat_pending">-</h4></div></div>
-            <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center"><h6 class="text-secondary mb-1"><i class="bi bi-currency-dollar"></i> Total Revenue</h6><h4 class="mb-0 text-primary fw-bold" id="stat_revenue">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('customers')"><h6 class="text-secondary mb-1"><i class="bi bi-people"></i> Total Customers</h6><h4 class="mb-0 text-info fw-bold" id="stat_customers">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-cart"></i> Total Orders</h6><h4 class="mb-0 text-success fw-bold" id="stat_orders">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('orders')"><h6 class="text-secondary mb-1"><i class="bi bi-hourglass-split"></i> Pending Orders</h6><h4 class="mb-0 text-warning fw-bold" id="stat_pending">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center"><h6 class="text-secondary mb-1">🚀 Active Bots</h6><h4 class="mb-0 text-danger fw-bold" id="stat_active_bots">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center"><h6 class="text-secondary mb-1"><i class="bi bi-cash"></i> ToDay Revenue</h6><h4 class="mb-0 text-primary fw-bold" id="stat_today_revenue">-</h4></div></div>
+            <div class="col-sm-6 col-md-4 col-lg-2"><div class="premium-card p-3 text-center"><h6 class="text-secondary mb-1"><i class="bi bi-currency-dollar"></i> Total Revenue</h6><h4 class="mb-0 text-primary fw-bold" id="stat_revenue">-</h4></div></div>
           </div>
           
-          <div class="row g-3 mb-4">
-            <div class="col-md-6">
-              <div class="premium-card p-3 h-100">
-                <h6 class="mb-3 text-white"><i class="bi bi-graph-up-arrow"></i> Revenue Growth (Last 30 Days)</h6>
-                <canvas id="chartStoreRevenue" height="200"></canvas>
-              </div>
-            </div>
+          <div class="row g-3 mb-4 justify-content-center">
             <div class="col-md-6">
               <div class="premium-card p-3 h-100">
                 <h6 class="mb-3 text-white"><i class="bi bi-pie-chart"></i> Popular Bots</h6>
@@ -826,22 +822,6 @@
             
             let d = j.data;
             
-            // Revenue Chart
-            const ctxRev = document.getElementById('chartStoreRevenue');
-            if(ctxRev) {
-                if(!dashCharts.revenue) {
-                    dashCharts.revenue = new Chart(ctxRev, {
-                        type: 'line',
-                        data: { labels: d.revenue_growth.labels, datasets: [{ label: 'Revenue (৳)', data: d.revenue_growth.data, borderColor: '#0dcaf0', tension: 0.1, fill:true, backgroundColor:'rgba(13, 202, 240, 0.1)' }] },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid:{color:'rgba(255,255,255,0.05)'} }, x: { grid:{color:'rgba(255,255,255,0.05)'} } } }
-                    });
-                } else {
-                    dashCharts.revenue.data.labels = d.revenue_growth.labels;
-                    dashCharts.revenue.data.datasets[0].data = d.revenue_growth.data;
-                    dashCharts.revenue.update();
-                }
-            }
-            
             // Bots Chart
             const ctxBot = document.getElementById('chartStoreBots');
             if(ctxBot) {
@@ -878,7 +858,9 @@
         document.getElementById('stat_customers').innerText = sj.data.total_customers;
         document.getElementById('stat_orders').innerText = sj.data.total_orders;
         document.getElementById('stat_pending').innerText = sj.data.pending_orders;
-        document.getElementById('stat_revenue').innerText = '৳ ' + sj.data.total_revenue;
+        document.getElementById('stat_active_bots').innerText = sj.data.active_bots;
+        document.getElementById('stat_today_revenue').innerText = '৳' + sj.data.today_revenue;
+        document.getElementById('stat_revenue').innerText = '৳' + sj.data.total_revenue;
     }
     } catch(e) { console.error('Dashboard stats error:', e); }
     }
