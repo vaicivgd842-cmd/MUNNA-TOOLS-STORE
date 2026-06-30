@@ -1,7 +1,14 @@
 import multiprocessing
 import os
 
-port = os.environ.get("PORT", "5000")
+# Railway auto-sets PORT — handle edge case where it might be a literal "$PORT" string
+_raw_port = os.environ.get("PORT", "5000")
+try:
+    port = int(_raw_port)
+except (ValueError, TypeError):
+    # fallback: if PORT is something like "$PORT" (not expanded), use 5000
+    port = 5000
+
 bind = f"0.0.0.0:{port}"
 
 # Workers: Recommended to be (2 x $num_cores) + 1
