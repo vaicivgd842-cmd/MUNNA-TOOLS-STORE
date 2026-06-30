@@ -22,7 +22,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 from flask import Blueprint, current_app
-from . import limiter
+from . import limiter, csrf
 legacy_bp = Blueprint('legacy', __name__)
 
 @legacy_bp.after_app_request
@@ -2430,6 +2430,7 @@ def _perform_license_check(data: dict):
 
 # ---------------- Client license check API ----------------
 @legacy_bp.route("/api/ck", methods=["POST"])
+@csrf.exempt  # Bot API — external clients can't send CSRF tokens
 def api_ck():
     # IP-level rate limit (60 req / 60 s, in-memory per worker)
     client_ip = request.remote_addr or "0.0.0.0"
@@ -2440,6 +2441,7 @@ def api_ck():
 
 # ---------------- /api/ck/login (new-style client alias) ----------------
 @legacy_bp.route("/api/ck/login", methods=["POST"])
+@csrf.exempt  # Bot API — external clients can't send CSRF tokens
 def api_ck_login():
     """Alias endpoint that maps new-style field names to legacy names."""
     data = request.get_json() or {}
