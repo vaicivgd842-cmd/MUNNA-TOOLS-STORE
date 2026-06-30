@@ -18,8 +18,8 @@ COPY . .
 # Ensure data directory exists
 RUN mkdir -p /app/data
 
-# Expose Gunicorn port
-EXPOSE 5000
+# Expose port (Railway sets $PORT dynamically)
+EXPOSE ${PORT:-5000}
 
-# Start Gunicorn server
-CMD ["gunicorn", "-c", "gunicorn_config.py", "run:app"]
+# Start Gunicorn server (shell form so $PORT env var is expanded)
+CMD gunicorn -c gunicorn_config.py run:app
