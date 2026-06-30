@@ -586,91 +586,96 @@ def api_store_clear_machine():
 
 @store_bp.route("/api/store/buy", methods=["POST"])
 def api_store_buy():
-    if not session.get("customer_logged_in"): return jsonify({"status": "error", "message": "Unauthorized"}), 401
-    
-    u = session.get("customer_username", "")
-    conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT can_buy FROM store_customers WHERE username=?", (u,))
+    try:
+        if not session.get("customer_logged_in"): return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
-    row = c.fetchone()
-    if not row or row[0] == 0:
-        conn.close()
-        return jsonify({"status": "error", "message": "Your account is pending Admin approval for making purchases. Please contact Support!"}), 403
+        u = session.get("customer_username", "")
+        conn = db_conn(); c = conn.cursor()
+        c.execute("SELECT can_buy FROM store_customers WHERE username=?", (u,))
+            
+        row = c.fetchone()
+        if not row or row[0] == 0:
+            conn.close()
+            return jsonify({"status": "error", "message": "Your account is pending Admin approval for making purchases. Please contact Support!"}), 403
+            
+        d = request.get_json()
+        pid = d.get("pricing_id")
+        pmethod = d.get("payment_method", "").strip()
+        snum = d.get("sender_number", "").strip()
+        trx = d.get("transaction_id", "").strip().upper()
+        proof_base64 = d.get("payment_screenshot", "")
+        username_input = d.get("username", "").strip() # For SR VIP
+    
+        if not pmethod or not trx: 
+            return jsonify({"status": "error", "message": "Payment Method and Transaction ID are required!"}), 400
+    
+        c.execute("SELECT app_name, duration_days, price FROM store_bot_pricing WHERE id=? AND is_active=1", (pid,))
+        p = c.fetchone()
+        if not p: conn.close(); return jsonify({"status": "error", "message": "Pricing item not found or currently unavailable"}), 404
+    
+        # ---------------- MACRODROID AUTO APPROVAL LOGIC ----------------
+        c.execute("SELECT id, amount FROM store_received_payments WHERE trx_id=? AND is_used=0", (trx,))
+        rx_row = c.fetchone()
+    
+        auto_approved = False
+        rand_key = None
+    
+        if rx_row and rx_row[1] >= p[2]: 
+            auto_approved = True
+            rx_id = rx_row[0]
         
-    d = request.get_json()
-    pid = d.get("pricing_id")
-    pmethod = d.get("payment_method", "").strip()
-    snum = d.get("sender_number", "").strip()
-    trx = d.get("transaction_id", "").strip().upper()
-    proof_base64 = d.get("payment_screenshot", "")
-    username_input = d.get("username", "").strip() # For SR VIP
-    
-    if not pmethod or not trx: 
-        return jsonify({"status": "error", "message": "Payment Method and Transaction ID are required!"}), 400
-    
-    c.execute("SELECT app_name, duration_days, price FROM store_bot_pricing WHERE id=? AND is_active=1", (pid,))
-    p = c.fetchone()
-    if not p: conn.close(); return jsonify({"status": "error", "message": "Pricing item not found or currently unavailable"}), 404
-    
-    # ---------------- MACRODROID AUTO APPROVAL LOGIC ----------------
-    c.execute("SELECT id, amount FROM store_received_payments WHERE trx_id=? AND is_used=0", (trx,))
-    rx_row = c.fetchone()
-    
-    auto_approved = False
-    rand_key = None
-    
-    if rx_row and rx_row[1] >= p[2]: 
-        auto_approved = True
-        rx_id = rx_row[0]
-        
-        is_sr_vip = "SR VIP" in p[0].upper()
-        if is_sr_vip and username_input:
-            rand_key = username_input
-            c.execute("SELECT id FROM users WHERE username=?", (rand_key,))
-            if c.fetchone():
-                return jsonify({"status": "error", "message": "This Username is already taken! Please choose another one."}), 400
-        else:
-            rand_key = f"{u}_{secrets.token_hex(2).upper()[:3]}"
-            c.execute("SELECT id FROM users WHERE username=?", (rand_key,))
-            while c.fetchone():
+            is_sr_vip = "SR VIP" in p[0].upper()
+            if is_sr_vip and username_input:
+                rand_key = username_input
+                c.execute("SELECT id FROM users WHERE username=?", (rand_key,))
+                if c.fetchone():
+                    return jsonify({"status": "error", "message": "This Username is already taken! Please choose another one."}), 400
+            else:
                 rand_key = f"{u}_{secrets.token_hex(2).upper()[:3]}"
                 c.execute("SELECT id FROM users WHERE username=?", (rand_key,))
+                while c.fetchone():
+                    rand_key = f"{u}_{secrets.token_hex(2).upper()[:3]}"
+                    c.execute("SELECT id FROM users WHERE username=?", (rand_key,))
         
-        today = datetime.date.today()
-        new_expiry = today + datetime.timedelta(days=p[1])
+            today = datetime.date.today()
+            new_expiry = today + datetime.timedelta(days=p[1])
         
-        c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
-            (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), u, 'STORE_CUSTOMER'))
+            c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
+                (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), u, 'STORE_CUSTOMER'))
             
-        if 'ALL TOOLS' not in p[0].upper():
-            try:
-                c.execute("SELECT app_name FROM bots WHERE app_name != ?", (p[0],))
-                other_bots = c.fetchall()
-                for b in other_bots:
-                    c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
-            except Exception as e:
-                current_app.logger.error(f"Error: {e}")
+            if 'ALL TOOLS' not in p[0].upper():
+                try:
+                    c.execute("SELECT app_name FROM bots WHERE app_name != ?", (p[0],))
+                    other_bots = c.fetchall()
+                    for b in other_bots:
+                        c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
+                except Exception as e:
+                    current_app.logger.error(f"Error: {e}")
         
-        c.execute("UPDATE store_received_payments SET is_used=1 WHERE id=?", (rx_id,))
+            c.execute("UPDATE store_received_payments SET is_used=1 WHERE id=?", (rx_id,))
     
-    final_status = 'APPROVED' if auto_approved else 'PENDING'
-    appr_date = datetime.datetime.utcnow().isoformat() if auto_approved else None
+        final_status = 'APPROVED' if auto_approved else 'PENDING'
+        appr_date = datetime.datetime.utcnow().isoformat() if auto_approved else None
     
-    is_sr_vip = "SR VIP" in p[0].upper()
-    notes_dict = {"app_name": p[0], "duration_days": p[1], "license_key": rand_key, "approved_at": appr_date, "payment_type": "Auto Payment" if auto_approved else "Manual Payment"}
-    if is_sr_vip and username_input:
-        notes_dict["requested_username"] = username_input
+        is_sr_vip = "SR VIP" in p[0].upper()
+        notes_dict = {"app_name": p[0], "duration_days": p[1], "license_key": rand_key, "approved_at": appr_date, "payment_type": "Auto Payment" if auto_approved else "Manual Payment"}
+        if is_sr_vip and username_input:
+            notes_dict["requested_username"] = username_input
         
-    c.execute("INSERT INTO store_orders(customer_username, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-              (u, p[2], pmethod, snum, trx, proof_base64, final_status, json.dumps(notes_dict), datetime.datetime.utcnow().isoformat()))
+        c.execute("INSERT INTO store_orders(customer_username, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (u, p[2], pmethod, snum, trx, proof_base64, final_status, json.dumps(notes_dict), datetime.datetime.utcnow().isoformat()))
     
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
     
-    if auto_approved:
-        return jsonify({"status": "ok", "message": "Payment verified automatically! Your License Key has been generated and activated."})
-    else:
-        return jsonify({"status": "ok", "message": "Order placed successfully! Waiting for admin manual verification."})
+        if auto_approved:
+            return jsonify({"status": "ok", "message": "Payment verified automatically! Your License Key has been generated and activated."})
+        else:
+            return jsonify({"status": "ok", "message": "Order placed successfully! Waiting for admin manual verification."})
+    except Exception as e:
+        import traceback
+        current_app.logger.error(f"Error in api_store_buy: {e}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 500
 
 @store_bp.route("/api/store/support_info", methods=["GET"])
 def api_store_support_info():
