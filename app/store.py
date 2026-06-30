@@ -145,7 +145,7 @@ def init_store_db():
     c.execute('''CREATE TABLE IF NOT EXISTS store_orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_username TEXT NOT NULL,
-        total_amount REAL NOT NULL,
+        total_amount REAL NOT NULL DEFAULT 0.0,
         payment_method TEXT,
         sender_number TEXT,
         transaction_id TEXT,
@@ -154,6 +154,26 @@ def init_store_db():
         notes TEXT,
         created_at TEXT NOT NULL
     )''')
+    
+    # Migrate: add missing columns if store_orders was created in an older version
+    c.execute("PRAGMA table_info(store_orders)")
+    so_cols = [col[1] for col in c.fetchall()]
+    if so_cols:
+        if 'total_amount' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN total_amount REAL NOT NULL DEFAULT 0.0")
+        if 'payment_method' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN payment_method TEXT")
+        if 'sender_number' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN sender_number TEXT")
+        if 'transaction_id' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN transaction_id TEXT")
+        if 'payment_screenshot' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN payment_screenshot TEXT")
+        if 'status' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN status TEXT DEFAULT 'PENDING'")
+        if 'notes' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN notes TEXT")
+
     # Performance Indexes
     c.execute("CREATE INDEX IF NOT EXISTS idx_store_orders_customer ON store_orders(customer_username, id DESC)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_store_payments_trx ON store_received_payments(trx_id)")
