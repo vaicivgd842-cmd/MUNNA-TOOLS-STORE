@@ -767,6 +767,17 @@
     }
   
     async function loadAdmin() {
+    // Load all sections independently — one failure must not block another
+    loadDashboardStats();
+    loadOrders();
+    loadPricing();
+    loadCustomers();
+    loadPaymentMethods();
+    loadOrders();
+    }
+
+    async function loadDashboardStats() {
+    try {
     let sr = await fetch('/api/admin/store/dashboard_stats');
     let sj = await sr.json();
     if(sj.status === 'ok') {
@@ -775,16 +786,20 @@
         document.getElementById('stat_pending').innerText = sj.data.pending_orders;
         document.getElementById('stat_revenue').innerText = '৳ ' + sj.data.total_revenue;
     }
+    } catch(e) { console.error('Dashboard stats error:', e); }
+    }
 
+    async function loadOrders() {
+    try {
     let r = await fetch('/api/admin/store/orders'); 
     let j = await r.json();
-    if(j.status !== 'ok') return toast("Unauthorized");
+    if(j.status !== 'ok') { toast && toast("Unauthorized - Orders"); return; }
     
     document.getElementById('a_orders').innerHTML = '';
     window._allOrders = j.data;
     renderOrders(j.data);
 
-    document.getElementById('a_recent_orders').innerHTML = j.data.slice(0, 20).map(o => `
+    document.getElementById('a_recent_orders').innerHTML = (j.data || []).slice(0, 20).map(o => `
       <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
         <td class="py-3 px-4 text-secondary" style="font-family: monospace;">#${o.id}</td>
         <td class="py-3 fw-bold text-info">${o.customer}</td>
@@ -793,7 +808,11 @@
         <td class="py-3"><span class="badge" style="background: ${o.status==='APPROVED'?'rgba(32, 201, 151, 0.1)':o.status==='PENDING'?'rgba(255, 193, 7, 0.1)':'rgba(220, 53, 69, 0.1)'}; color: ${o.status==='APPROVED'?'#20c997':o.status==='PENDING'?'#ffc107':'#dc3545'}; border: 1px solid ${o.status==='APPROVED'?'rgba(32, 201, 151, 0.2)':o.status==='PENDING'?'rgba(255, 193, 7, 0.2)':'rgba(220, 53, 69, 0.2)'}; border-radius: 20px; padding: 5px 12px; font-weight: 600; font-size: 0.7rem; letter-spacing: 0.5px;">${o.status}</span></td>
         <td class="py-3 text-secondary" style="font-size: 0.8rem;">${o.created_at.replace('T', ' ').substring(0, 16)}</td>
       </tr>`).join('');
+    } catch(e) { console.error('Orders load error:', e); }
+    }
 
+    async function loadPricing() {
+    try {
     let pr = await fetch('/api/admin/store/pricing_list');
     let pj = await pr.json();
     if(pj.status === 'ok') {
@@ -831,8 +850,14 @@
             document.getElementById('vip_price_60').value = v.price_60 || 0;
             document.getElementById('vip_price_90').value = v.price_90 || 0;
         });
+    } else {
+        console.error('Pricing list error:', pj);
+    }
+    } catch(e) { console.error('Pricing load error:', e); }
     }
 
+    async function loadCustomers() {
+    try {
     let cr = await fetch('/api/admin/store/customers');
     let cj = await cr.json();
     if(cj.status === 'ok') {
@@ -862,9 +887,11 @@
               </td>
           </tr>`).join('');
     }
+    } catch(e) { console.error('Customers load error:', e); }
+    }
 
-    // Payment Methods are now managed via the dynamic JSON modal.
-
+    async function loadPaymentMethods() {
+    // Payment Methods are managed via the dynamic JSON modal.
     try {
         let br = await fetch('/api/admin/store/active_bots');
         let bj = await br.json();
@@ -872,7 +899,8 @@
             document.getElementById('botList').innerHTML = bj.data.map(b => `<option value="${b}">`).join('');
         }
     } catch(e) {}
-  }
+    }
+
   
   async function loadDeviceSyncStatus() {
       try {
