@@ -643,14 +643,27 @@ def api_store_buy():
             c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
                 (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), u, 'STORE_CUSTOMER'))
             
-            if 'ALL TOOLS' not in p[0].upper():
+            if 'ALL TOOLS' in p[0].upper():
+                try:
+                    c.execute("""
+                        SELECT app_name FROM bots 
+                        WHERE app_name NOT IN (
+                            SELECT DISTINCT app_name FROM store_bot_pricing WHERE is_active=1
+                        )
+                    """)
+                    bots_to_block = c.fetchall()
+                    for b in bots_to_block:
+                        c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
+                except Exception as e:
+                    current_app.logger.error(f"Error blocking unavailable bots for ALL TOOLS: {e}")
+            else:
                 try:
                     c.execute("SELECT app_name FROM bots WHERE app_name != ?", (p[0],))
                     other_bots = c.fetchall()
                     for b in other_bots:
                         c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
                 except Exception as e:
-                    current_app.logger.error(f"Error: {e}")
+                    current_app.logger.error(f"Error blocking other bots: {e}")
         
             c.execute("UPDATE store_received_payments SET is_used=1 WHERE id=?", (rx_id,))
     
@@ -1090,14 +1103,27 @@ def api_admin_store_approve():
     c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
         (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), customer, 'STORE_CUSTOMER'))
         
-    if 'ALL TOOLS' not in app_name.upper():
+    if 'ALL TOOLS' in app_name.upper():
+        try:
+            c.execute("""
+                SELECT app_name FROM bots 
+                WHERE app_name NOT IN (
+                    SELECT DISTINCT app_name FROM store_bot_pricing WHERE is_active=1
+                )
+            """)
+            bots_to_block = c.fetchall()
+            for b in bots_to_block:
+                c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
+        except Exception as e:
+            current_app.logger.error(f"Error blocking unavailable bots for ALL TOOLS: {e}")
+    else:
         try:
             c.execute("SELECT app_name FROM bots WHERE app_name != ?", (app_name,))
             other_bots = c.fetchall()
             for b in other_bots:
                 c.execute("INSERT OR IGNORE INTO user_bot_blocks(username, app_name) VALUES (?,?)", (rand_key, b[0]))
         except Exception as e:
-            current_app.logger.error(f"Error: {e}")
+            current_app.logger.error(f"Error blocking other bots: {e}")
             
     c.execute("SELECT notes FROM store_orders WHERE id=?", (oid,))
     n_str = c.fetchone()[0]
@@ -1118,9 +1144,22 @@ def api_admin_store_delete_order():
     if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
     oid = (request.get_json() or {}).get("order_id")
     conn = db_conn(); c = conn.cursor()
+    
+    # Auto disable the username when the order is deleted
+    c.execute("SELECT notes FROM store_orders WHERE id=?", (oid,))
+    row = c.fetchone()
+    if row and row[0]:
+        try:
+            n = json.loads(row[0])
+            license_key = n.get("license_key")
+            if license_key:
+                c.execute("UPDATE users SET status='DISABLED' WHERE username=?", (license_key,))
+        except Exception as e:
+            current_app.logger.error(f"Error disabling user on order delete: {e}")
+
     c.execute("DELETE FROM store_orders WHERE id=?", (oid,))
     conn.commit(); conn.close()
-    return jsonify({"status": "ok", "message": "Order deleted"})
+    return jsonify({"status": "ok", "message": "Order deleted and associated user disabled"})
 
 
 # =================== ADMIN: RESET CUSTOMER PASSWORD ===================
