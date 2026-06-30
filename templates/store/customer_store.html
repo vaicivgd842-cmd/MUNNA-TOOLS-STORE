@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>MUNNA TOOLS STORE</title>
+  <meta name="description" content="MUNNA Tools Store — manage your bot subscriptions and licenses.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/store.css') }}">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="page-wrapper">
+  
+  <nav id="sidebar">
+    <div class="nav-brand">🏪 MUNNA TOOLS<br>STORE</div>
+    <div class="nav-item active" id="menu-dashboard" onclick="showSection('dashboard')"><span>🏠</span> <span class="nav-label">Dashboard</span></div>
+    
+    <div class="nav-item" id="menu-srvip" onclick="showSection('srvip')" style="display: none;">
+        <span class="text-warning">👑</span> <span class="nav-label text-warning fw-bold">SR VIP</span>
+    </div>
+    
+    <div class="nav-item" id="menu-orders" onclick="showSection('orders')"><span>📋</span> <span class="nav-label">My Orders</span></div>
+    <div class="nav-item" id="menu-subscriptions" onclick="showSection('subscriptions')"><span>🔑</span> <span class="nav-label">My Subscriptions</span></div>
+    <div class="nav-item" id="menu-account" onclick="showSection('account')"><span>👤</span> <span class="nav-label">My Account</span></div>
+    <div class="nav-item" id="menu-support" onclick="showSection('support')"><span>🎧</span> <span class="nav-label">Support</span></div>
+    <div class="nav-item" onclick="logout()"><span>🚪</span> <span class="nav-label">Logout</span></div>
+  </nav>
+
+  <div id="mainContent">
+    <div class="container-fluid">
+      <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
+        <h3 class="mb-0 text-info">🛒 MUNNA TOOLS STORE</h3>
+        <div>
+          <span class="me-3">Welcome, <strong id="c_name" class="text-warning"></strong> 
+          <span id="acc_vip_badge" class="badge bg-warning text-dark" style="display:none;">👑 VIP</span></span>
+          <span id="acc_buy_badge" class="badge bg-secondary ms-1">-</span>
+        </div>
+      </div>
+      
+      <!-- Section: Dashboard -->
+      <div id="sec-dashboard" class="store-section active">
+        
+        <div class="row text-center mb-4" id="acc_stats_row">
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-info"><h6 class="text-secondary small mb-2">Available Bots</h6><h3 class="text-info mb-0 fw-bold" id="st_avail">-</h3></div></div>
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-primary"><h6 class="text-secondary small mb-2">My Licenses</h6><h3 class="text-primary mb-0 fw-bold" id="st_lic">-</h3></div></div>
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-success"><h6 class="text-secondary small mb-2">Active Licenses</h6><h3 class="text-success mb-0 fw-bold" id="st_act">-</h3></div></div>
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-danger"><h6 class="text-secondary small mb-2">Expired Licenses</h6><h3 class="text-danger mb-0 fw-bold" id="st_exp">-</h3></div></div>
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-warning"><h6 class="text-secondary small mb-2">Orders Completed</h6><h3 class="text-warning mb-0 fw-bold" id="st_ord_comp">-</h3></div></div>
+          <div class="col-6 col-md-4 mb-3"><div class="premium-card p-3 border-secondary"><h6 class="text-secondary small mb-2">Orders Pending</h6><h3 class="text-light mb-0 fw-bold" id="st_ord_pend">-</h3></div></div>
+        </div>
+
+        <h5 class="mb-3 text-light">🚀 Available Bots</h5>
+        <div class="row" id="pricingList"></div>
+      </div>
+
+      <!-- Section: SR VIP -->
+      <div id="sec-srvip" class="store-section">
+        <div class="premium-card p-4 border-warning shadow-lg text-center" style="max-width: 800px; margin: 0 auto;">
+          <h2 class="text-warning mb-3 fw-bold">👑 SR VIP Access</h2>
+          <p class="text-light mb-4 fs-5">Unlock <strong>ALL</strong> premium tools and bots in the store with a single powerful subscription!</p>
+          <div class="row justify-content-center" id="vipPricingList"></div>
+        </div>
+      </div>
+      
+      <!-- Section: My Orders -->
+      <div id="sec-orders" class="store-section">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+              <h4 class="mb-0 text-white fw-bold">📋 My Orders</h4>
+          </div>
+          
+          <div class="premium-card " >
+            <div class="table-responsive">
+              <table class="table-premium table-borderless table-hover mb-0" style="color: #a0aec0; vertical-align: middle;">
+                <thead style="border-bottom: 1px solid #1a2332;">
+                  <tr style="font-size: 0.75rem; color: #718096; text-transform: uppercase;">
+                      <th class="py-3 px-4 fw-bold">Order ID</th>
+                      <th class="py-3 fw-bold">Bot / Plan</th>
+                      <th class="py-3 fw-bold">Amount</th>
+                      <th class="py-3 fw-bold">Payment Info</th>
+                      <th class="py-3 fw-bold">Username</th>
+                      <th class="py-3 fw-bold">Status</th>
+                      <th class="py-3 fw-bold">Date & Time</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersList"></tbody>
+              </table>
+            </div>
+          </div>
+      </div>
+  
+      <!-- Section: My Subscriptions -->
+      <div id="sec-subscriptions" class="store-section">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+              <h4 class="mb-0 text-white fw-bold">🔑 My Subscriptions / Licenses</h4>
+              <span class="badge bg-dark border border-warning text-warning" style="font-size:0.9rem; border-radius: 20px; padding: 8px 15px;">
+                  🔄 ID Clear Remaining: <span id="clear_stats" class="fw-bold">0</span>
+              </span>
+          </div>
+          
+          <div class="premium-card " >
+            <div class="table-responsive">
+              <table class="table-premium table-borderless table-hover mb-0" style="color: #a0aec0; vertical-align: middle;">
+                <thead style="border-bottom: 1px solid #1a2332;">
+                  <tr style="font-size: 0.75rem; color: #718096; text-transform: uppercase;">
+                    <th class="py-3 px-4 fw-bold">#</th>
+                    <th class="py-3 fw-bold">Tool Name</th>
+                    <th class="py-3 fw-bold">Version</th>
+                    <th class="py-3 fw-bold">Username</th>
+                    <th class="py-3 fw-bold">Activation Key</th>
+                    <th class="py-3 fw-bold">Expiry</th>
+                    <th class="py-3 fw-bold">Machine ID</th>
+                    <th class="py-3 fw-bold">Plan Type</th>
+                    <th class="py-3 fw-bold">Status</th>
+                    <th class="py-3 px-4 text-center fw-bold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="subsList"></tbody>
+              </table>
+            </div>
+          </div>
+      </div>
+
+      <!-- Section: My Account -->
+      <div id="sec-account" class="store-section">
+        <div class="premium-card p-4" style="max-width: 500px;">
+          <h5 class="mb-4 border-bottom border-secondary pb-2 text-info">👤 My Account Details</h5>
+          <p class="mb-2"><strong class="text-secondary">Full Name:</strong> <span id="acc_name"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Username:</strong> <span id="acc_username" class="text-warning"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Phone:</strong> <span id="acc_phone"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Email:</strong> <span id="acc_email"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Purchase Permission:</strong> <span id="acc_can_buy"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Machine ID Clear Limits:</strong> <span id="acc_clear_limit" class="text-info"></span></p>
+          <p class="mb-2"><strong class="text-secondary">Join Date:</strong> <span id="acc_join"></span></p>
+        </div>
+      </div>
+
+      <!-- Section: Support -->
+      <div id="sec-support" class="store-section">
+        <div class="premium-card p-4 text-center mx-auto" style="max-width: 500px;">
+            <h4 class="text-info mb-4">🎧 Contact Support</h4>
+            <p class="text-secondary mb-4">If you need any help regarding bots, payments or your account, feel free to contact us via the following methods:</p>
+            <div id="support_links_container"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+    <div class="modal-content shadow-lg border-0" style="background:#0b1424; border:1px solid #1a3a6a !important; border-radius: 1rem;">
+      
+      <!-- Step 1: Select Gateway -->
+      <div id="checkoutStep1">
+        <div class="d-flex justify-content-between align-items-center border-bottom mb-4 p-4 pb-3" style="border-color: #1a3a6a !important;">
+          <div class="rounded-circle border border-secondary d-flex align-items-center justify-content-center text-secondary" style="width: 38px; height: 38px; cursor: pointer;" onclick="bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div class="fw-bold text-info fs-5" style="font-size: 1.1rem !important;">MUNNA TOOLS STORE</div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="px-4 pb-4">
+          <div class="text-center mb-4">
+            <div class="bg-primary text-white py-2 rounded-3 fw-bold fs-5">মোবাইল ব্যাংকিং</div>
+          </div>
+
+          <div class="row g-2 mb-4" id="paymentMethodsGrid">
+             <!-- Gateways injected here -->
+          </div>
+
+          <div class="text-center">
+            <div class="w-100 fw-bold fs-5 py-3 rounded-3" style="background-color: rgba(13,202,240,0.1); color: var(--accent-cyan); border: 1px solid rgba(13,202,240,0.4);">
+              Pay ৳<span id="pay_amount"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Enter Transaction ID -->
+      <div id="checkoutStep2" class="d-none p-3 pb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <button type="button" class="btn btn-link text-secondary p-0" onclick="gotoStep1()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div style="width: 24px;"></div>
+        </div>
+
+        <div class="d-flex flex-column align-items-center mb-3">
+          <img src="" id="step2_gw_logo" class="mb-2 d-none" style="height: 45px; object-fit: contain;">
+          <div class="fs-2 fw-bold text-light">৳<span id="step2_amount"></span></div>
+        </div>
+
+        <div class="rounded-4 p-4 text-white" id="step2_bg" style="background-color: #2196f3; box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);">
+          <h5 class="text-center fw-bold mb-4">ট্রানজেকশন আইডি দিন</h5>
+
+          <input type="text" id="pay_username" class="form-control form-control-premium text-center py-2 rounded-2 border-0 mb-3 d-none" placeholder="আপনার Username দিন (SR VIP)">
+          
+          <input type="text" id="pay_trx_id" class="form-control form-control-premium text-center py-2 rounded-2 border-0 mb-4" placeholder="ট্রানজেকশন আইডি দিন">
+
+          <ul class="list-unstyled small mb-4 fw-medium" style="line-height: 1.8; font-size: 0.8rem;">
+            <li class="border-bottom border-light border-opacity-25 pb-2 mb-2 d-flex">
+              <span class="me-2">•</span> <div>আপনার <span id="step2_gw_name"></span> অ্যাপ এ যান অথবা ডায়াল করুন</div>
+            </li>
+            <li class="border-bottom border-light border-opacity-25 pb-2 mb-2 d-flex">
+              <span class="me-2">•</span> <div>"Send Money" এ ক্লিক করুন</div>
+            </li>
+            <li class="border-bottom border-light border-opacity-25 pb-2 mb-2 d-flex align-items-center">
+              <span class="me-2">•</span> <div>প্রাপক নম্বর: <b class="ms-1" id="step2_gw_number"></b></div>
+              <button class="btn btn-sm btn-light bg-opacity-25 text-white py-0 px-2 ms-auto fw-bold" style="font-size: 0.7rem; border-radius: 4px;" onclick="copyText(document.getElementById('step2_gw_number').innerText)">Copy</button>
+            </li>
+            <li class="border-bottom border-light border-opacity-25 pb-2 mb-2 d-flex">
+              <span class="me-2">•</span> <div>টাকার পরিমাণ: <b class="text-warning ms-1">৳<span id="step2_amount_li"></span></b></div>
+            </li>
+            <li class="border-bottom border-light border-opacity-25 pb-2 mb-2 d-flex">
+              <span class="me-2">•</span> <div>নিশ্চিত করতে আপনার পিন দিন</div>
+            </li>
+            <li class="d-flex">
+              <span class="me-2">•</span> <div>ট্রানজেকশন সফল হলে Transaction ID দিয়ে Verify করুন</div>
+            </li>
+          </ul>
+
+          <button type="button" class="btn w-100 fw-bold py-2 rounded-3 text-white" id="confirmOrderBtn" style="border: 1px solid white; background-color: rgba(255,255,255,0.2); letter-spacing: 1px;">VERIFY</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let selectedPricingId = null;
+    let _allPaymentMethods = [];
+    let _customerCanBuy = 0;
+
+    function showSection(sec) {
+        document.querySelectorAll('.store-section').forEach(el => el.classList.remove('active'));
+        document.getElementById('sec-' + sec).classList.add('active');
+        
+        document.querySelectorAll('#sidebar .nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('menu-' + sec).classList.add('active');
+
+        if(sec === 'support') loadSupport();
+    }
+
+    function selectBotPlan(idx, planId, price, days, btnElement) {
+        document.getElementById('selected_plan_id_' + idx).value = planId;
+        document.getElementById('selected_plan_price_' + idx).value = price;
+        document.getElementById('selected_plan_days_' + idx).value = days;
+        
+        let allBtns = document.querySelectorAll('.plan-btn-' + idx);
+        allBtns.forEach(b => {
+            b.classList.remove('btn-info', 'text-dark', 'fw-bold');
+            b.classList.add('btn-outline-info', 'text-light');
+        });
+        
+        btnElement.classList.remove('btn-outline-info', 'text-light');
+        btnElement.classList.add('btn-info', 'text-dark', 'fw-bold');
+    }
+
+    function triggerBuyPlan(idx, appName) {
+        if(!_customerCanBuy) {
+            return toast("⚠️ Your account is pending Admin approval for making purchases. Please contact Support!");
+        }
+        let pid = document.getElementById('selected_plan_id_' + idx).value;
+        let price = document.getElementById('selected_plan_price_' + idx).value;
+        let days = document.getElementById('selected_plan_days_' + idx).value;
+        openPaymentModal(pid, appName, days, price);
+    }
+
+    async function loadStore() {
+        let r = await fetch('/api/store/data');
+        let j = await r.json();
+        if(j.status !== 'ok') return window.location.href='/store/login';
+        
+        document.getElementById('c_name').textContent = j.data.username;
+        _customerCanBuy = j.data.user_info.can_buy;
+
+        let buyBadge = document.getElementById('acc_buy_badge');
+        if(_customerCanBuy) {
+            buyBadge.className = 'badge bg-success ms-1';
+            buyBadge.textContent = 'Purchase Approved';
+            document.getElementById('acc_can_buy').innerHTML = '<span class="text-success fw-bold">Approved</span>';
+        } else {
+            buyBadge.className = 'badge bg-danger ms-1';
+            buyBadge.textContent = 'Purchase Pending';
+            document.getElementById('acc_can_buy').innerHTML = '<span class="text-danger fw-bold">Pending Approval</span>';
+        }
+        
+        document.getElementById('acc_name').textContent = j.data.user_info.full_name || '-';
+        document.getElementById('acc_username').textContent = j.data.username;
+        document.getElementById('acc_phone').textContent = j.data.user_info.phone_number || '-';
+        document.getElementById('acc_email').textContent = j.data.user_info.email || '-';
+        document.getElementById('acc_join').textContent = j.data.user_info.created_at;
+        
+        let remainingClears = j.data.user_info.clear_limit - j.data.user_info.clear_count;
+        document.getElementById('acc_clear_limit').textContent = `${j.data.user_info.clear_count} Used / ${j.data.user_info.clear_limit} Total`;
+        document.getElementById('clear_stats').textContent = remainingClears;
+        document.getElementById('menu-srvip').style.display = 'block';
+        document.getElementById('acc_vip_badge').style.display = 'none';
+
+        let uniqueBots = new Set(j.data.pricing.map(p => p.app_name)).size;
+        document.getElementById('st_avail').textContent = uniqueBots;
+        document.getElementById('st_ord_comp').textContent = j.data.orders.filter(o => o.status === 'APPROVED').length;
+        document.getElementById('st_ord_pend').textContent = j.data.orders.filter(o => o.status === 'PENDING').length;
+
+        const normalBots = {};
+        const vipBots = [];
+        
+        j.data.pricing.forEach(p => {
+            if(p.app_name === 'SR VIP ALL TOOLS') {
+                vipBots.push(p);
+            } else {
+                if(!normalBots[p.app_name]) normalBots[p.app_name] = [];
+                normalBots[p.app_name].push(p);
+            }
+        });
+
+        if (Object.keys(normalBots).length === 0) {
+            document.getElementById('pricingList').innerHTML = '<div class="col-12 text-secondary">No bots available in the store yet.</div>';
+        } else {
+            let html = '';
+            let idx = 0;
+            for(let app in normalBots) {
+                let plans = normalBots[app].sort((a,b) => a.duration_days - b.duration_days);
+                let version = plans[0].version || '1.0';
+                
+                // Build the plan toggle buttons
+                let toggleHtml = '';
+                let firstPlanId = '';
+                let firstPrice = '';
+                let firstDays = '';
+                
+                plans.forEach((p, pIdx) => {
+                    let isFirst = pIdx === 0;
+                    if(isFirst) {
+                        firstPlanId = p.id;
+                        firstPrice = p.price;
+                        firstDays = p.duration_days;
+                    }
+                    let btnClass = isFirst ? 'btn-info text-dark fw-bold' : 'btn-outline-info text-light';
+                    let mName = p.duration_days === 30 ? '1 Month' : (p.duration_days === 60 ? '2 Months' : '3 Months');
+                    toggleHtml += `
+                        <div class="col-4 px-1">
+                            <button type="button" class="btn btn-sm w-100 py-2 plan-btn-${idx} ${btnClass}" 
+                                style="border-radius: 8px; border-color: #0dcaf0;" 
+                                onclick="selectBotPlan(${idx}, ${p.id}, ${p.price}, ${p.duration_days}, this)">
+                                <div style="font-size: 0.8rem;">${mName}</div>
+                                <div class="fw-bold" style="font-size: 1.1rem;">৳${p.price}</div>
+                            </button>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                <div class="col-md-4 mb-4">
+                    <div class="premium-card p-4 text-center border-secondary shadow-lg h-100" style="border-radius: 16px; background: #0c141d; border: 1px solid #2b3a4a;">
+                        <div class="d-flex align-items-center mb-4">
+                            <div class="rounded-3 me-3 flex-shrink-0 d-flex align-items-center justify-content-center" style="width: 60px; height: 60px; background: #101923; border: 1px solid #233140; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);">
+                                <i class="bi bi-robot text-info opacity-75" style="font-size: 1.8rem; text-shadow: 0 0 10px rgba(13, 202, 240, 0.5);"></i>
+                            </div>
+                            <div class="text-start">
+                                <h5 class="text-white mb-1 fw-bold" style="font-size: 1.1rem; line-height: 1.2;">${app}</h5>
+                                <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-2" style="font-size: 0.75rem;">
+                                    <i class="bi bi-tag-fill me-1"></i>v${version}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="text-start mb-2 text-secondary small fw-bold">Select Plan:</div>
+                        <div class="row g-0 mx-n1 mb-4">
+                            ${toggleHtml}
+                        </div>
+                        
+                        <!-- Hidden inputs to store selection -->
+                        <input type="hidden" id="selected_plan_id_${idx}" value="${firstPlanId}">
+                        <input type="hidden" id="selected_plan_price_${idx}" value="${firstPrice}">
+                        <input type="hidden" id="selected_plan_days_${idx}" value="${firstDays}">
+                        
+                        <button class="btn btn-info w-100 fw-bold text-dark rounded-pill py-2 mt-auto" onclick="triggerBuyPlan(${idx}, '${app}')">
+                            <i class="bi bi-cart2 me-1"></i> Purchase Now
+                        </button>
+                    </div>
+                </div>`;
+                idx++;
+            }
+            document.getElementById('pricingList').innerHTML = html;
+        }
+
+        if (vipBots.length === 0) {
+            document.getElementById('vipPricingList').innerHTML = '<div class="col-12 text-secondary">VIP Plans are not configured yet.</div>';
+        } else {
+            let vipHtml = '';
+            vipBots.sort((a,b) => a.duration_days - b.duration_days).forEach(p => {
+                vipHtml += `
+                <div class="col-md-4 mb-3">
+                    <div class="premium-card p-3 border-warning text-center" style="background:#000;">
+                        <h4 class="text-warning mb-2">${p.duration_days} Days VIP</h4>
+                        <h2 class="text-success mb-3">৳ ${p.price}</h2>
+                        <button class="btn btn-warning w-100 fw-bold" onclick="openPaymentModal(${p.id}, '${p.app_name}', ${p.duration_days}, ${p.price})">Buy VIP Access</button>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('vipPricingList').innerHTML = vipHtml;
+        }
+
+        if (j.data.orders.length === 0) {
+            document.getElementById('ordersList').innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-4">No orders found.</td></tr>';
+        } else {
+            document.getElementById('ordersList').innerHTML = j.data.orders.map(o => {
+                let notes = {};
+                try { notes = JSON.parse(o.notes || '{}'); } catch(e) {}
+                let paymentType = notes.payment_type || 'Manual Payment';
+                let version = notes.version || 'v1.0';
+                let isVip = o.app_name.toUpperCase().includes('VIP');
+                
+                return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td class="py-3 px-4 text-secondary" style="font-family: monospace;">#${o.id}</td>
+                    <td class="py-3">
+                        <div class="fw-bold text-white mb-1">${o.app_name} ${isVip ? '<span class="badge bg-warning text-dark ms-1 rounded-pill" style="font-size:0.65rem;">👑 SR VIP</span>' : ''}</div>
+                        <div class="text-secondary" style="font-size: 0.8rem;">${o.duration_days} Days <span class="text-info">${version}</span></div>
+                    </td>
+                    <td class="py-3 text-success fw-bold">৳${o.price}</td>
+                    <td class="py-3">
+                        <div class="text-secondary">${paymentType}</div>
+                        <div class="text-info" style="font-size: 0.8rem; font-family: monospace;">${notes.transaction_id || '-'}</div>
+                    </td>
+                    <td class="py-3 text-warning fw-bold">-</td>
+                    <td class="py-3">
+                        <div class="mb-1">
+                            <span class="badge" style="background: ${o.status==='APPROVED'?'rgba(32, 201, 151, 0.1)':o.status==='PENDING'?'rgba(255, 193, 7, 0.1)':'rgba(220, 53, 69, 0.1)'}; color: ${o.status==='APPROVED'?'#20c997':o.status==='PENDING'?'#ffc107':'#dc3545'}; border: 1px solid ${o.status==='APPROVED'?'rgba(32, 201, 151, 0.2)':o.status==='PENDING'?'rgba(255, 193, 7, 0.2)':'rgba(220, 53, 69, 0.2)'}; border-radius: 20px; padding: 4px 10px; font-size: 0.65rem;">${o.status === 'APPROVED' ? (paymentType === 'Auto Payment' ? 'Auto APPROVED' : 'Manual APPROVED') : o.status}</span>
+                        </div>
+                        <div class="text-secondary" style="font-size: 0.7rem;">${paymentType}</div>
+                    </td>
+                    <td class="py-3 text-secondary" style="font-size: 0.8rem;">${o.created_at.replace('T', ' ').substring(0, 16)}</td>
+                </tr>`;
+            }).join('');
+        }
+        
+        loadSubscriptions();
+    }
+    
+    async function loadSubscriptions() {
+        let r = await fetch('/api/store/subscriptions');
+        let j = await r.json();
+        
+        let total = 0; let active = 0; let expired = 0;
+        
+        if(j.status === 'ok' && j.data.length > 0) {
+            total = j.data.length;
+            let today = new Date();
+            
+            document.getElementById('subsList').innerHTML = j.data.map((s, index) => {
+                let isExpired = new Date(s.expiry_date) < today;
+                if(isExpired) expired++;
+                else if(s.status === 'ENABLED') active++;
+                
+                let isVip = s.app_name.toUpperCase().includes('VIP');
+                return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td class="py-3 px-4 text-secondary">${index + 1}</td>
+                    <td class="py-3 fw-bold text-info"><span style="border: 1px solid rgba(13, 202, 240, 0.2); border-radius: 20px; padding: 5px 15px; display: inline-block;">${isVip ? '👑 ' : '🤖 '}${s.app_name === 'SR VIP ALL TOOLS' ? 'ALL TOOLS (VIP)' : s.app_name}</span></td>
+                    <td class="py-3 text-secondary"><span class="badge bg-secondary rounded-pill">v1.0</span></td>
+                    <td class="py-3"><span class="text-warning fw-bold" style="border: 1px dashed rgba(255,193,7,0.3); border-radius: 20px; padding: 4px 12px; display: inline-block;">${s.username}</span></td>
+                    <td class="py-3"><span class="text-warning" style="font-family: monospace; border: 1px dashed rgba(255,193,7,0.3); border-radius: 20px; padding: 4px 12px; display: inline-block;">${s.username}</span></td>
+                    <td class="py-3 text-secondary">${s.expiry_date ? s.expiry_date.substring(0, 10) : '-'}</td>
+                    <td class="py-3 text-secondary" style="font-family: monospace; font-size: 0.8rem;">${s.machine_id}</td>
+                    <td class="py-3 fw-bold text-${isVip ? 'warning' : 'primary'}">${isVip ? '👑 VIP' : 'Regular'}</td>
+                    <td class="py-3"><span class="badge" style="background: ${s.status==='ENABLED'?'rgba(32, 201, 151, 0.1)':'rgba(220, 53, 69, 0.1)'}; color: ${s.status==='ENABLED'?'#20c997':'#dc3545'}; border: 1px solid ${s.status==='ENABLED'?'rgba(32, 201, 151, 0.2)':'rgba(220, 53, 69, 0.2)'}; border-radius: 20px; padding: 5px 12px;">${s.status === 'ENABLED' ? (isExpired ? 'EXPIRED' : 'ACTIVE') : s.status}</span></td>
+                    <td class="py-3 px-4 text-center">
+                        <button class="btn btn-sm btn-info rounded-pill fw-bold" style="padding: 4px 15px;" onclick="clearMachine('${s.username}')">Clear ID</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        } else {
+            document.getElementById('subsList').innerHTML = '<tr><td colspan="10" class="text-center text-secondary py-4">No active subscriptions found.</td></tr>';
+        }
+        
+        document.getElementById('st_lic').textContent = total;
+        document.getElementById('st_act').textContent = active;
+        document.getElementById('st_exp').textContent = expired;
+    }
+    
+    async function clearMachine(bot_username) {
+        if(!confirm("Are you sure you want to clear the Machine ID for this bot?")) return;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        let r = await fetch('/api/store/clear_machine', {
+            method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': csrfToken}, body:JSON.stringify({bot_username: bot_username})
+        });
+        let j = await r.json();
+        toast(j.message);
+        loadStore();
+    }
+    
+    let _selectedGateway = null;
+    let _isSrVip = false;
+
+    function gotoStep1() {
+        document.getElementById('checkoutStep2').classList.add('d-none');
+        document.getElementById('checkoutStep1').classList.remove('d-none');
+    }
+
+    async function openPaymentModal(pid, app_name, duration, price) {
+        if(!_customerCanBuy) {
+            return toast("⚠️ Your account is pending Admin approval for making purchases. Please contact Support!");
+        }
+        selectedPricingId = pid;
+        document.getElementById('pay_amount').textContent = price;
+        document.getElementById('step2_amount').textContent = price;
+        document.getElementById('step2_amount_li').textContent = price;
+        
+        _isSrVip = app_name.toUpperCase().includes('SR VIP');
+        if(_isSrVip) {
+            document.getElementById('pay_username').classList.remove('d-none');
+        } else {
+            document.getElementById('pay_username').classList.add('d-none');
+        }
+
+        document.getElementById('pay_trx_id').value = '';
+        document.getElementById('pay_username').value = '';
+        gotoStep1();
+
+        let r = await fetch('/api/store/payment_methods');
+        let j = await r.json();
+        if (j.status === 'ok' && j.data.length > 0) {
+            _allPaymentMethods = j.data;
+            document.getElementById('paymentMethodsGrid').innerHTML = j.data.map(m => `
+                <div class="col-6 col-md-4">
+                    <button type="button" class="btn w-100 h-100 p-3 bg-white border border-light-subtle rounded-3 shadow-sm d-flex align-items-center justify-content-center" onclick="selectPayMethod('${m.id}')" onmouseover="this.classList.add('border-primary')" onmouseout="this.classList.remove('border-primary')">
+                        ${m.logo_url ? `<img src="${m.logo_url}" alt="${m.name}" style="height: 35px; object-fit: contain;">` : `<span class="fw-bold fs-6" style="color: ${m.color}">${m.name}</span>`}
+                    </button>
+                </div>
+            `).join('');
+        } else {
+            document.getElementById('paymentMethodsGrid').innerHTML = "<div class='col-12 text-center text-secondary py-4'>No payment methods available.</div>";
+        }
+        
+        new bootstrap.Modal(document.getElementById('paymentModal')).show();
+    }
+
+    function selectPayMethod(id) {
+        let method = _allPaymentMethods.find(m => m.id === id);
+        if(method) {
+            _selectedGateway = method;
+            document.getElementById('step2_gw_name').textContent = method.name;
+            document.getElementById('step2_gw_number').textContent = method.number;
+            document.getElementById('step2_bg').style.backgroundColor = method.color || '#0d6efd';
+            
+            if(method.logo_url) {
+                document.getElementById('step2_gw_logo').src = method.logo_url;
+                document.getElementById('step2_gw_logo').classList.remove('d-none');
+            } else {
+                document.getElementById('step2_gw_logo').classList.add('d-none');
+            }
+
+            document.getElementById('checkoutStep1').classList.add('d-none');
+            document.getElementById('checkoutStep2').classList.remove('d-none');
+        }
+    }
+
+    function copyText(text) {
+        navigator.clipboard.writeText(text);
+        toast("Copied: " + text);
+    }
+
+    document.getElementById('confirmOrderBtn').addEventListener('click', async () => {
+        if(!selectedPricingId || !_selectedGateway) return;
+        
+        const trx = document.getElementById('pay_trx_id').value.trim();
+        const username_val = document.getElementById('pay_username').value.trim();
+
+        if(!trx) {
+            return toast("অনুগ্রহ করে ট্রানজেকশন আইডি দিন!");
+        }
+        if(_isSrVip && !username_val) {
+            return toast("অনুগ্রহ করে আপনার Username দিন!");
+        }
+
+        document.getElementById('confirmOrderBtn').disabled = true;
+        document.getElementById('confirmOrderBtn').textContent = "⏳ Submitting...";
+
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            let r = await fetch('/api/store/buy', {
+                method:'POST', 
+                headers:{'Content-Type':'application/json', 'X-CSRFToken': csrfToken}, 
+                body:JSON.stringify({
+                    pricing_id: selectedPricingId,
+                    payment_method: _selectedGateway.name,
+                    transaction_id: trx,
+                    username: username_val
+                })
+            });
+            let j = await r.json(); 
+            toast(j.message); 
+            if(j.status === 'ok') {
+                bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide();
+                loadStore();
+                showSection('orders');
+            }
+        } catch(e) {
+            toast("Error submitting order: " + e.message);
+        } finally {
+            document.getElementById('confirmOrderBtn').disabled = false;
+            document.getElementById('confirmOrderBtn').textContent = "VERIFY";
+        }
+    });
+
+    async function loadSupport() {
+        let r = await fetch('/api/store/support_info');
+        let j = await r.json();
+        if(j.status === 'ok') {
+            let html = '';
+            if(j.data.support_telegram) html += `<a href="${j.data.support_telegram}" target="_blank" class="btn btn-outline-info w-100 mb-2">✈️ Telegram Support</a>`;
+            if(j.data.support_whatsapp) html += `<a href="https://wa.me/${j.data.support_whatsapp}" target="_blank" class="btn btn-outline-success w-100 mb-2">📞 WhatsApp Support</a>`;
+            if(j.data.support_facebook) html += `<a href="${j.data.support_facebook}" target="_blank" class="btn btn-outline-primary w-100 mb-2">🌐 Facebook Page/Profile</a>`;
+            
+            if(!html) html = '<p class="text-warning">Support links not configured yet.</p>';
+            document.getElementById('support_links_container').innerHTML = html;
+        }
+    }
+    
+    async function logout() {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        await fetch('/api/store/logout', {method:'POST', headers:{'X-CSRFToken': csrfToken}});
+        window.location.href='/store/login';
+    }
+    
+  // ============================================================
+  // TOAST SYSTEM (replaces toast())
+  // ============================================================
+  function toast(msg, type = 'info', title = '') {
+    const icons  = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const titles = { success: 'Success', error: 'Error', warning: 'Warning', info: 'Info' };
+    const container = document.getElementById('toast-container');
+    const item = document.createElement('div');
+    item.className = `toast-item ${type}`;
+    item.innerHTML = `
+      <span class="toast-icon">${icons[type]||'ℹ️'}</span>
+      <div class="toast-body">
+        <div class="toast-title">${escHtml(title || titles[type])}</div>
+        <div class="toast-msg">${escHtml(msg)}</div>
+      </div>
+      <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
+    `;
+    container.appendChild(item);
+    setTimeout(() => removeToast(item), type === 'error' ? 6000 : 4000);
+  }
+  function removeToast(el) {
+    if (!el || el.classList.contains('removing')) return;
+    el.classList.add('removing');
+    setTimeout(() => el.remove(), 260);
+  }
+  function escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function confirmAction(msg, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box"><div style="font-size:2rem;text-align:center;margin-bottom:1rem;">⚠️</div><h6 style="font-weight:700;margin-bottom:0.75rem;text-align:center;">Confirm</h6><p style="color:var(--text-secondary);font-size:0.85rem;text-align:center;margin-bottom:1.5rem;">${escHtml(msg)}</p><div style="display:flex;gap:0.75rem;justify-content:center;"><button id="cc" style="padding:0.5rem 1.5rem;border-radius:8px;border:1px solid #12213a;background:transparent;color:#8fa3b8;cursor:pointer;">Cancel</button><button id="cok" style="padding:0.5rem 1.5rem;border-radius:8px;border:none;background:#ef4444;color:#fff;font-weight:700;cursor:pointer;">Confirm</button></div></div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#cc').onclick = () => overlay.remove();
+    overlay.querySelector('#cok').onclick = () => { overlay.remove(); onConfirm(); };
+    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  }
+
+  loadStore();
+</script>
+</body>
+</html>

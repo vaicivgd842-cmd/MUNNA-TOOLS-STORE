@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Login — MUNNA TOOLS STORE</title>
+  <meta name="description" content="Login to your MUNNA Tools Store account to manage bot subscriptions and licenses.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent-cyan:   hsl(193, 100%, 50%);  /* index.css --primary */
+      --accent-blue:   hsl(216, 100%, 50%);  /* index.css --chart-5 */
+      --accent-green:  hsl(160, 100%, 45%);  /* index.css --chart-2 */
+      --bg-deep:       hsl(222, 47%,  6%);   /* index.css --background */
+      --bg-card:       hsl(220, 40%,  8%);   /* index.css --card */
+      --border-subtle: hsl(215, 35%, 20%);   /* index.css --border */
+      --border-ring:   hsl(193, 100%, 50%);  /* index.css --ring */
+      --text-primary:  hsl(210, 40%, 93%);   /* index.css --foreground */
+      --text-secondary:hsl(210, 25%, 58%);   /* index.css --muted-foreground */
+      --text-muted:    hsl(215, 20%, 38%);   /* darker muted */
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated background orbs */
+    .bg-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      animation: orb-float 8s ease-in-out infinite alternate;
+    }
+    .bg-orb-1 { width: 400px; height: 400px; background: rgba(13,202,240,0.06); top: -10%; left: -10%; animation-duration: 9s; }
+    .bg-orb-2 { width: 350px; height: 350px; background: rgba(59,130,246,0.05); bottom: -5%; right: -5%; animation-duration: 11s; }
+    .bg-orb-3 { width: 200px; height: 200px; background: rgba(167,139,250,0.04); top: 40%; left: 50%; animation-duration: 7s; }
+
+    @keyframes orb-float {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(20px, 30px) scale(1.05); }
+    }
+
+    /* Grid overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(13,202,240,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13,202,240,0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+    }
+
+    /* Card */
+    .login-card {
+      background: rgba(8,15,28,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(13,202,240,0.12);
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 420px;
+      position: relative;
+      box-shadow:
+        0 24px 64px rgba(0,0,0,0.7),
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 0 0 1px rgba(13,202,240,0.04);
+      animation: cardIn 0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Top glow bar */
+    .login-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 15%; right: 15%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+      border-radius: 99px;
+    }
+
+    /* Logo area */
+    .logo-area {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+      width: 56px; height: 56px;
+      background: linear-gradient(135deg, rgba(13,202,240,0.2), rgba(59,130,246,0.2));
+      border: 1px solid rgba(13,202,240,0.3);
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 0 24px rgba(13,202,240,0.15);
+    }
+
+    .logo-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #e2e8f0, var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Form */
+    .form-group { margin-bottom: 1rem; }
+
+    .form-label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 0.4rem;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 0.875rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
+
+    .form-input {
+      width: 100%;
+      background: rgba(11,20,36,0.8);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 0.75rem 0.875rem 0.75rem 2.5rem;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(13,202,240,0.12);
+      background: var(--bg-card);
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+
+    /* Toggle password visibility */
+    .pw-toggle {
+      position: absolute;
+      right: 0.875rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-size: 0.9rem;
+      padding: 0;
+      transition: color 0.2s;
+    }
+    .pw-toggle:hover { color: var(--text-primary); }
+
+    /* Buttons */
+    .btn-primary-full {
+      width: 100%;
+      padding: 0.8rem;
+      background: linear-gradient(135deg, var(--accent-cyan), #0a8fa8);
+      border: none;
+      border-radius: 10px;
+      color: #040810;
+      font-size: 0.875rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      position: relative;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .btn-primary-full:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(13,202,240,0.35);
+    }
+
+    .btn-primary-full:active { transform: translateY(0); }
+
+    .btn-primary-full:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Spinner */
+    .spinner {
+      display: none;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(4,8,16,0.5);
+      border-top-color: #040810;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    .loading .spinner { display: inline-block; }
+    .loading .btn-text { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+    }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+
+    .btn-outline-full {
+      width: 100%;
+      padding: 0.75rem;
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      color: var(--text-secondary);
+      font-size: 0.825rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-outline-full:hover {
+      background: rgba(13,202,240,0.05);
+      border-color: rgba(13,202,240,0.3);
+      color: var(--accent-cyan);
+    }
+
+    /* Error message */
+    .error-box {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      padding: 0.625rem 0.875rem;
+      font-size: 0.78rem;
+      color: #fca5a5;
+      margin-bottom: 1rem;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Footer links */
+    .footer-links {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .footer-links a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .footer-links a:hover { text-decoration: underline; }
+
+    /* Admin link */
+    .admin-link {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      opacity: 0.4;
+      transition: opacity 0.2s;
+    }
+    .admin-link:hover { opacity: 1; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <!-- Background orbs -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
+  <div class="login-card">
+    <div class="logo-area">
+      <div class="logo-icon">🛒</div>
+      <div class="logo-title">MUNNA TOOLS STORE</div>
+      <div class="logo-sub">Sign in to your account</div>
+    </div>
+
+    <div class="error-box" id="errBox"></div>
+
+    <div class="form-group">
+      <label class="form-label" for="inp-user">Username</label>
+      <div class="input-wrap">
+        <span class="input-icon">👤</span>
+        <input id="inp-user" class="form-input" type="text" placeholder="Enter your username" autocomplete="username">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="inp-pass">Password</label>
+      <div class="input-wrap">
+        <span class="input-icon">🔒</span>
+        <input id="inp-pass" class="form-input" type="password" placeholder="Enter your password" autocomplete="current-password">
+        <button class="pw-toggle" type="button" onclick="togglePw('inp-pass', this)" title="Show/hide password">👁</button>
+      </div>
+    </div>
+
+    <button class="btn-primary-full" id="loginBtn" onclick="doLogin()">
+      <span class="spinner"></span>
+      <span class="btn-text">Sign In</span>
+    </button>
+
+    <div class="divider">or</div>
+
+    <button class="btn-outline-full" onclick="window.location.href='/store/signup'">
+      📝 Create New Account
+    </button>
+
+    <div class="footer-links">
+      Don't have an account? <a href="/store/signup">Sign up free</a>
+    </div>
+  </div>
+
+  <a href="/login" class="admin-link">⚙ Admin Panel</a>
+
+  <script>
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    function togglePw(id, btn) {
+      const inp = document.getElementById(id);
+      if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+      else { inp.type = 'password'; btn.textContent = '👁'; }
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errBox');
+      box.textContent = '⚠ ' + msg;
+      box.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('errBox').style.display = 'none';
+    }
+
+    // Enter key to submit
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    async function doLogin() {
+      const u = document.getElementById('inp-user').value.trim();
+      const p = document.getElementById('inp-pass').value;
+      if (!u || !p) { showError('Please enter your username and password.'); return; }
+
+      hideError();
+      const btn = document.getElementById('loginBtn');
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const r = await fetch('/api/store/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const j = await r.json();
+
+        if (j.status === 'ok') {
+          window.location.href = '/store';
+        } else {
+          showError(j.message || 'Login failed. Please try again.');
+          btn.classList.remove('loading');
+          btn.disabled = false;
+          document.getElementById('inp-pass').value = '';
+          document.getElementById('inp-pass').focus();
+        }
+      } catch(err) {
+        showError('Network error. Please check your connection.');
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

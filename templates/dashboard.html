@@ -1,0 +1,3583 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>MUNNA TOOLS STORE MAIN ADMIN PANEL</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/store.css') }}">
+  <style>.section-hidden { display: none !important; }</style>
+</head>
+<body>
+<!-- Toast Container -->
+<div id="toast-container"></div>
+<div class="page-wrapper">
+
+<!-- ========== SIDEBAR ========== -->
+<nav id="sidebar">
+  <div class="nav-brand">🛡️ MUNNA TOOLS STORE MAIN ADMIN PANEL</div>
+  <div class="nav-item active" onclick="showSection('dashboard')" id="menu-dashboard"><span>🏠</span> <span class="nav-label">Dashboard</span></div>
+  <div class="nav-item" onclick="showSection('users')" id="menu-users"><span>👤</span> <span class="nav-label">Users</span></div>
+  <div class="nav-item" onclick="openAddUserModal()" id="menu-adduser"><span>➕</span> <span class="nav-label">Add User</span></div>
+  <div class="nav-item" onclick="showSection('bulk')" id="menu-bulk"><span>📦</span> <span class="nav-label">Bulk Import</span></div>
+  {% if is_super %}
+  <div class="nav-item" onclick="showSection('subadmin')" id="menu-subadmin"><span>👥</span> <span class="nav-label">Sub Admins</span></div>
+  <div class="nav-item" onclick="showSection('createsubadmin')" id="menu-createsubadmin"><span>➕</span> <span class="nav-label">Create Sub Admin</span></div>
+  <div class="nav-item mt-2" onclick="window.open('/admin/store', '_blank')" id="menu-storeadmin" style="border-left: 3px solid #ffc107;">
+      <span>🛍️</span> <span class="nav-label text-warning fw-bold">STORE ADMIN</span>
+  </div>
+  <div class="nav-item mb-2" onclick="window.open('/store', '_blank')" id="menu-customerstore" style="border-left: 3px solid #0dcaf0;">
+      <span>🛒</span> <span class="nav-label text-info fw-bold">CUSTOMER STORE</span>
+  </div>
+  <div class="nav-item" onclick="showSection('bots')" id="menu-bots"><span>🤖</span> <span class="nav-label">Bot Management</span></div>
+  <div class="nav-item" onclick="showSection('connectdevice')" id="menu-connectdevice"><span>📱</span> <span class="nav-label">Connect Device</span></div>
+  <div class="nav-item" onclick="showSection('devices')" id="menu-devices" onclick="loadDevices()" style="display:none"><span>📱</span> <span class="nav-label">Old Connected Devices</span></div>
+  {% endif %}
+  <div class="nav-item" onclick="showSection('analytics')" id="menu-analytics" style="display:none"><span>📊</span> <span class="nav-label">Analytics</span></div>
+  <div class="nav-item" onclick="showSection('audit')" id="menu-audit" style="display:none"><span>📋</span> <span class="nav-label">Audit Log</span></div>
+  <div class="nav-item" onclick="showSection('loginhistory')" id="menu-loginhistory" style="display:none"><span>🕐</span> <span class="nav-label">Login History</span></div>
+  <div class="nav-item" onclick="showSection('loginattempts')" id="menu-loginattempts" style="display:none"><span>🔐</span> <span class="nav-label">Login Attempts</span></div>
+  <div class="nav-item" onclick="showSection('activitysummary')" id="menu-activitysummary" style="display:none"><span>📋</span> <span class="nav-label">Activity Summary</span></div>
+  {% if is_super %}
+  <div class="nav-item" onclick="window.open('/admin/store', '_blank')" id="menu-storeAdmin"><span>🏪</span> <span class="nav-label">Store Admin</span></div>
+  {% endif %}
+  <div class="nav-item" onclick="window.open('/store', '_blank')" id="menu-store" style="{% if not is_super %}display:none{% endif %}"><span>🛒</span> <span class="nav-label">Customer Store</span></div>
+  {% if is_super %}
+  <div class="nav-item" onclick="showSection('maintenance')" id="menu-maintenance"><span>🔧</span> <span class="nav-label">Maintenance</span></div>
+  {% endif %}
+  <div class="nav-item" onclick="showSection('myaccount')" id="menu-myaccount"><span>👤</span> <span class="nav-label">My Account</span></div>
+  <div class="nav-item" onclick="document.getElementById('logoutBtn').click()"><span>🚪</span> <span class="nav-label">Logout</span></div>
+</nav>
+
+<!-- ========== MAIN CONTENT ========== -->
+<div id="mainContent">
+<div class="container-fluid">
+    <!-- Always-visible header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">🛡️ MUNNA TOOLS STORE MAIN ADMIN PANEL</h4>
+        <div class="small text-secondary">Logged in as: <span class="text-light">{{ admin_username }}</span> <span class="badge bg-info text-dark">{{ role }}</span></div>
+      </div>
+    <div>
+      <button class="btn btn-sm btn-outline-light me-2" id="refreshBtn">Refresh</button>
+      
+      {% if not is_super %}
+      <button class="btn btn-sm btn-premium btn-yellow text-dark me-2" data-bs-toggle="modal" data-bs-target="#changePasswordModal">🔑 Change Password</button>
+      {% endif %}
+      <button class="btn btn-sm btn-premium btn-red" id="logoutBtn">Logout</button>
+    </div>
+    </div>
+
+    <!-- Add Device Modal -->
+    <div class="modal fade" id="addDeviceModal" tabindex="-1">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+          <div class="modal-header border-0 pb-0">
+            <h6 class="modal-title text-info">Add New Device</h6>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <input type="text" id="newDeviceName" class="form-control form-control-premium bg-dark text-light border-secondary" placeholder="Device Name (e.g., My Phone)">
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="btn btn-premium btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-premium btn-cyan btn-sm" onclick="submitCreateDevice()">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Password Modal (SUB_ADMIN only) -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+          <div class="modal-header border-0 pb-0">
+            <h6 class="modal-title">🔑 Change Password</h6>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-2">
+              <input class="form-control form-control-premium form-control-sm" type="password" id="cpCurrentPw" placeholder="Current Password">
+            </div>
+            <div class="mb-2">
+              <input class="form-control form-control-premium form-control-sm" type="password" id="cpNewPw" placeholder="New Password (min 6 chars)">
+            </div>
+            <div>
+              <input class="form-control form-control-premium form-control-sm" type="password" id="cpConfirmPw" placeholder="Confirm New Password">
+            </div>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-sm btn-premium btn-yellow text-dark" id="cpSaveBtn">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- Summary Stats Panel -->
+  <div class="row mb-3 text-center section-hidden" data-section="users" id="statsPanel">
+    <div class="col-6 col-md-3 mb-2">
+      <div class="premium-card bg-dark border-info text-info p-2" style="cursor:pointer" onclick="openUsersByStatus('')" title="Show all users">
+        <h6 class="mb-0">Total Users</h6>
+        <h4 class="mb-0" id="statTotalUsers">-</h4>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 mb-2">
+      <div class="premium-card bg-dark border-success text-success p-2" style="cursor:pointer" onclick="openUsersByStatus('active')" title="Show active users">
+        <h6 class="mb-0">Active Users</h6>
+        <h4 class="mb-0" id="statActiveUsers">-</h4>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 mb-2">
+      <div class="premium-card bg-dark border-danger text-danger p-2" style="cursor:pointer" onclick="openUsersByStatus('expired')" title="Show expired users">
+        <h6 class="mb-0">🔴 Expired Users</h6>
+        <h4 class="mb-0" id="statExpiredUsers">-</h4>
+      </div>
+    </div>
+    {% if is_super %}
+    <div class="col-6 col-md-3 mb-2">
+      <div class="premium-card bg-dark border-warning text-warning p-2" style="cursor:pointer" onclick="showSection('subadmin')" title="Go to Sub Admins">
+        <h6 class="mb-0">Total Sub Admins</h6>
+        <h4 class="mb-0" id="statSubAdmins">-</h4>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% if is_super %}
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="subadmin">
+    <div class="d-flex align-items-center justify-content-between">
+      <h6 class="mb-2">👥 Sub Admin Management</h6>
+      <button class="btn btn-sm btn-outline-info" id="subadminRefreshBtn">Refresh Sub Admins</button>
+    </div>
+
+    <!-- Sub-admin Activity Summary Cards -->
+    <div class="mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <small class="text-secondary fw-bold">📊 Activity Summary</small>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadSubadminActivity()" title="Refresh activity" aria-label="Refresh sub-admin activity">🔄</button>
+      </div>
+      <div id="subadminActivityCards" class="row g-2">
+        <div class="col-12 text-secondary small">Click 🔄 to load activity summary</div>
+      </div>
+    </div>
+
+
+    <div class="row g-2 mt-1">
+      <div class="col-md-6">
+        <div class="premium-card p-2">
+          <div class="small text-secondary mb-2">Assign User → Sub Admin</div>
+          <form id="assignUserForm" class="row g-2">
+            <div class="col-12">
+              <select class="form-select form-control-premium form-select-sm" name="subadmin" id="assignSubadminSelect" required>
+                <option value="">Select sub-admin...</option>
+              </select>
+            </div>
+            <div class="col-12"><input class="form-control form-control-premium form-control-sm" name="username" id="assignUsernameInput" placeholder="User username" list="userSuggestList" required></div>
+            <div class="col-12"><button class="btn btn-sm btn-premium btn-cyan w-100" type="submit">Assign</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="premium-card p-2">
+          <div class="small text-secondary mb-2">Unassign User</div>
+          <form id="unassignUserForm" class="row g-2">
+            <div class="col-12">
+              <select class="form-select form-control-premium form-select-sm" name="subadmin" id="unassignSubadminSelect" required>
+                <option value="">Select sub-admin...</option>
+              </select>
+            </div>
+            <div class="col-12"><input class="form-control form-control-premium form-control-sm" name="username" id="unassignUsernameInput" placeholder="User username" list="userSuggestList" required></div>
+            <div class="col-12"><button class="btn btn-sm btn-warning w-100" type="submit">Unassign</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <datalist id="userSuggestList"></datalist>
+
+    <div class="premium-card p-2 mt-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="small text-secondary">Assigned Users (Selected Sub-admin)</div>
+        <button class="btn btn-sm btn-outline-info" id="subadminUsersRefreshBtn">Refresh List</button>
+      </div>
+      <div class="row g-2 mt-2 align-items-center">
+        <div class="col-md-4">
+          <select class="form-select form-control-premium form-select-sm" id="subadminUsersSelect">
+            <option value="">Select sub-admin...</option>
+          </select>
+        </div>
+        <div class="col-md-8 small text-secondary" id="assignedUsersMeta"></div>
+      </div>
+      <div class="table-responsive mt-2">
+        <table class="table-premium table-dark table-striped mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>User</th>
+              <th>Status</th>
+              <th>Expiry</th>
+              <th>Created?</th>
+            </tr>
+          </thead>
+          <tbody id="assignedUsersTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="table-responsive mt-3">
+      <table class="table-premium table-dark table-striped mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Sub Admin</th>
+            <th>Quota</th>
+            <th>Max Days</th>
+            <th>Password</th>
+            <th>Assigned</th>
+            <th>Created Users</th>
+            <th>Active</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="subadminTable"></tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="bots">
+    <h6 class="mb-2">🤖 Bot / App Management</h6>
+    {% if is_super %}
+    <form id="addBotForm" class="row g-2 mb-2">
+      <div class="col-sm-4"><input class="form-control form-control-premium form-control-sm" name="app_name" placeholder="App Name (e.g. FACEBOOK OTP SEND TOOLS)" required></div>
+      <div class="col-sm-3"><input class="form-control form-control-premium form-control-sm" name="required_version" placeholder="Required Version (e.g. 9.3)" required></div>
+      <div class="col-sm-2"><button class="btn btn-success btn-sm w-100" type="submit">➕ Add Bot</button></div>
+    </form>
+    {% endif %}
+
+    <div class="premium-card p-2 mb-2" style="border-color:#2ecc71">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="text-success fw-bold">📡 Live Running Apps</span>
+        <span class="small text-secondary">(auto-refresh 5s)</span>
+      </div>
+      <div id="liveAppsPanel" class="d-flex flex-wrap gap-2">
+        <span class="text-secondary small">Loading...</span>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table-premium table-dark table-striped mb-0">
+        <thead class="table-light">
+          <tr><th>#</th><th>App Name</th><th>Required Version</th><th>Status</th><th>Active Now</th><th>Last Seen</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="botTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ========== CONNECT DEVICE SECTION ========== -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="connectdevice" style="border-color:#0dcaf0">
+    <h6 class="mb-3 text-info">📱 Connect SMS Sync App</h6>
+    <div class="alert alert-dark border-secondary small text-light">
+      Click the button below to generate a new device login. Enter these exact credentials into the Android App to connect it to this server securely.
+    </div>
+    <div class="d-flex align-items-center mb-3">
+      <button class="btn btn-premium btn-cyan" id="generateDeviceLoginBtn">⚡ Generate New Device Login</button>
+      <span id="deviceLoginSpinner" class="ms-3 text-secondary" style="display:none">Generating...</span>
+    </div>
+    
+    <div id="deviceCredentialsBox" class="premium-card bg-dark border-info p-3" style="display:none">
+      <h6 class="text-success mb-3">✅ Device Login Created Successfully</h6>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Server URL (Copy to App)</label>
+          <div class="input-group">
+            <input class="form-control form-control-premium bg-dark text-light border-secondary font-monospace" id="cdServerUrl" readonly>
+            <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('cdServerUrl').value)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Device Key (Copy to App)</label>
+          <div class="input-group">
+            <input class="form-control form-control-premium bg-dark text-info border-secondary font-monospace" id="cdDeviceKey" readonly>
+            <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('cdDeviceKey').value)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Device Username (Copy to App)</label>
+          <div class="input-group">
+            <input class="form-control form-control-premium bg-dark text-warning border-secondary font-monospace" id="cdUsername" readonly>
+            <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('cdUsername').value)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Device Password (Copy to App)</label>
+          <div class="input-group">
+            <input class="form-control form-control-premium bg-dark text-warning border-secondary font-monospace" id="cdPassword" readonly>
+            <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('cdPassword').value)">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 small text-danger">
+        <strong>Warning:</strong> The password will only be shown this one time. Please copy it immediately.
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <h6 class="text-info">📋 Connected Devices</h6>
+      <button class="btn btn-sm btn-outline-info mb-2" onclick="loadAdminDevices()">🔄 Refresh List</button>
+      <div class="table-responsive">
+        <table class="table-premium table-dark table-striped mb-0 text-center border border-secondary">
+          <thead class="table-light">
+            <tr>
+              <th>Username</th>
+              <th>Status</th>
+              <th>Last Seen</th>
+              <th>SMS Forwarded</th>
+              <th>Created At</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="connectedDevicesTable">
+            <tr><td colspan="6" class="text-secondary">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== CREATE SUB ADMIN SECTION ========== -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="createsubadmin" style="border-color:#198754">
+    <h6 class="mb-3 text-success">➕ Create Sub Admin</h6>
+    <form id="csaForm">
+      <div class="row g-3">
+
+        <!-- Full Name + Email -->
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Full Name</label>
+          <input class="form-control form-control-premium form-control-sm" id="csaFullName" name="full_name" placeholder="Enter full name" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">Email</label>
+          <input class="form-control form-control-premium form-control-sm" id="csaEmail" name="email" type="email" placeholder="Enter email" required>
+        </div>
+
+        <!-- Username + Password -->
+        <div class="col-md-4">
+          <label class="form-label small text-secondary">Username</label>
+          <input class="form-control form-control-premium form-control-sm" id="csaUsername" name="username" placeholder="Enter username" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small text-secondary">Password</label>
+          <input class="form-control form-control-premium form-control-sm" id="csaPassword" name="password" type="password" placeholder="Enter password" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small text-secondary">Confirm Password</label>
+          <input class="form-control form-control-premium form-control-sm" id="csaConfirmPassword" name="confirm_password" type="password" placeholder="Confirm password" required>
+        </div>
+
+        <!-- Quota + Max Days -->
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">📊 Quota (Max Users)</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-dark text-info border-secondary">👥</span>
+            <input class="form-control form-control-premium bg-dark text-light border-secondary" id="csaMaxUsers" name="max_users" type="number" value="10" min="1" required>
+            <span class="input-group-text bg-dark text-secondary border-secondary">users</span>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small text-secondary">📅 Max Days (0 = Unlimited)</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-dark text-warning border-secondary">⏳</span>
+            <input class="form-control form-control-premium bg-dark text-light border-secondary" id="csaMaxDays" name="max_expiry_days" type="number" value="0" min="0">
+            <span class="input-group-text bg-dark text-secondary border-secondary">days</span>
+          </div>
+        </div>
+
+        <!-- Permissions -->
+        <div class="col-12">
+          <div class="premium-card p-2" style="border-color:#198754">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <small class="text-success fw-bold">🛡️ Permissions</small>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:.75rem" onclick="csaSetAllPerms(true)">All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem" onclick="csaSetAllPerms(false)">None</button>
+              </div>
+            </div>
+            <div id="csaPermCheckboxes" class="row g-1 p-1" style="background:#070d18;border-radius:6px;max-height:190px;overflow-y:auto;"></div>
+          </div>
+        </div>
+
+        <!-- Bot Access -->
+        <div class="col-12">
+          <div class="premium-card p-2" style="border-color:#0dcaf0">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <small class="text-info fw-bold">🤖 Bot Access <span class="text-secondary fw-normal">(uncheck = blocked)</span></small>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-info py-0 px-2" style="font-size:.75rem" onclick="csaSetAllBots(true)">All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem" onclick="csaSetAllBots(false)">None</button>
+              </div>
+            </div>
+            <div id="csaBotsLoading" class="text-secondary small py-1">Loading bots...</div>
+            <div id="csaBotCheckboxes" class="row g-1 p-1" style="background:#070d18;border-radius:6px;max-height:150px;overflow-y:auto;display:none"></div>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="col-12 d-flex align-items-center gap-3">
+          <button type="submit" class="btn btn-success px-4">✅ Create Sub Admin</button>
+          <span id="csaMsg" class="small"></span>
+        </div>
+
+      </div>
+    </form>
+  </div>
+
+  <!-- ========== LOGIN HISTORY SECTION ========== -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="loginhistory">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">🕐 User Login History</h6>
+      <button class="btn btn-sm btn-outline-info" onclick="loadLoginHistory()">🔄 Refresh</button>
+    </div>
+    <div class="row g-2 mb-2">
+      <div class="col-sm-3">
+        <input class="form-control form-control-premium form-control-sm" id="lhFilterUser" placeholder="Filter by username..." oninput="renderLoginHistory()">
+      </div>
+      <div class="col-sm-3">
+        <input class="form-control form-control-premium form-control-sm" id="lhFilterApp" placeholder="Filter by app name..." oninput="renderLoginHistory()">
+      </div>
+      <div class="col-sm-3">
+        <input class="form-control form-control-premium form-control-sm" type="date" id="lhFilterDate" aria-label="Filter by date" oninput="renderLoginHistory()">
+      </div>
+      <div class="col-sm-3">
+        <button class="btn btn-sm btn-outline-secondary w-100" onclick="document.getElementById('lhFilterUser').value='';document.getElementById('lhFilterApp').value='';document.getElementById('lhFilterDate').value='';renderLoginHistory()">Clear Filters</button>
+      </div>
+    </div>
+    <div class="small text-secondary mb-1" id="lhMeta"></div>
+    <div class="table-responsive">
+      <table class="table-premium table-dark table-striped table-sm mb-0">
+        <thead class="table-light">
+            <tr><th>#</th><th>Username</th><th>App Name</th><th>Version</th><th>Machine ID</th><th>IP Address</th><th>OS</th><th>Host</th><th>Time (UTC)</th></tr>
+        </thead>
+        <tbody id="loginHistoryTable"><tr><td colspan="9" class="text-center text-secondary">Click Refresh to load</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if is_super %}
+  <!-- Admin Login Attempts Section -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="loginattempts">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">🔐 Admin Login Attempts</h6>
+      <button class="btn btn-sm btn-outline-info" onclick="loadLoginAttempts()">🔄 Refresh</button>
+    </div>
+    <div class="small text-secondary mb-1" id="latMeta"></div>
+    <div class="table-responsive">
+      <table class="table-premium table-dark table-striped table-sm mb-0">
+        <thead class="table-light">
+          <tr><th>#</th><th>Username</th><th>IP Address</th><th>Result</th><th>Time (UTC)</th></tr>
+        </thead>
+        <tbody id="loginAttemptsTable"><tr><td colspan="5" class="text-center text-secondary">Click Refresh to load</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Renew Days Modal -->
+  <div class="modal fade" id="renewModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content bg-dark text-light border-info">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">🔄 Renew License — <span id="renewModalUser" class="text-info"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-secondary small mb-2">Select days to add:</p>
+          <div class="d-flex gap-2 flex-wrap mb-3">
+            <button class="btn btn-outline-info btn-sm fw-bold flex-fill renew-preset-btn" data-days="7">+7 Days</button>
+            <button class="btn btn-outline-success btn-sm fw-bold flex-fill renew-preset-btn" data-days="15">+15 Days</button>
+            <button class="btn btn-warning btn-sm fw-bold flex-fill renew-preset-btn" data-days="30">+30 Days</button>
+          </div>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-dark text-light border-secondary">Custom days</span>
+            <input type="number" class="form-control form-control-premium bg-dark text-light border-secondary" id="renewCustomDays" min="1" max="3650" placeholder="e.g. 60">
+            <button class="btn btn-premium btn-yellow text-dark btn-sm" id="renewCustomBtn">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add User Modal -->
+  <div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">➕ Add New User</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addForm">
+            <div class="row g-2 mb-3">
+              <div class="col-12">
+                <label class="form-label small text-secondary mb-1">Username <span class="text-danger">*</span></label>
+                <input class="form-control form-control-premium form-control-sm" id="addUsernameInput" name="username" placeholder="Username" required autocomplete="off">
+                <div class="mt-1 small text-secondary">⚡ Password ও Activation Key automatically username-এর মতোই হবে।</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-secondary mb-1">Expiry Date (optional)</label>
+                <input class="form-control form-control-premium form-control-sm" type="date" name="expiry_date">
+              </div>
+            </div>
+            <!-- Bot Access Selection -->
+            <div id="addUserBotSection" style="display:none">
+              <hr class="border-secondary">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="small fw-bold text-info">🤖 Bot Access</span>
+                <span class="small text-secondary">(checked = CAN use | unchecked = BLOCKED)</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 ms-auto" id="addUserBotSelectAll">All</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="addUserBotClearAll">None</button>
+              </div>
+              <div id="addUserBotList" class="d-flex flex-wrap gap-2"></div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-premium btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success btn-sm" id="addUserSubmitBtn">➕ Add User</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Dashboard Section -->
+  <div class="section-hidden" data-section="dashboard">
+    <div class="row g-3 mb-4">
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="openUsersByStatus('')"><h6 class="text-secondary mb-1">👥 Total Users</h6><h4 id="dashTotalUsers">-</h4></div></div>
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="openUsersByStatus('active')"><h6 class="text-secondary mb-1">🟢 Active Users</h6><h4 id="dashActiveUsers" class="text-success">-</h4></div></div>
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="openUsersByStatus('expired')"><h6 class="text-secondary mb-1">🔴 Expired Users</h6><h4 id="dashExpiredUsers" class="text-danger">-</h4></div></div>
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="openUsersByStatus('disabled')"><h6 class="text-secondary mb-1">🚫 Disabled Users</h6><h4 id="dashDisabledUsers" class="text-warning">-</h4></div></div>
+      
+      <div class="col-sm-6 col-md-3" id="dashCardSubAdmins" style="display:none;"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('subadmin')"><h6 class="text-secondary mb-1">👨‍💼 Total Sub Admins</h6><h4 id="dashTotalSubAdmins">-</h4></div></div>
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('bots')"><h6 class="text-secondary mb-1">🤖 Total Bots</h6><h4 id="dashTotalBots">-</h4></div></div>
+      <div class="col-sm-6 col-md-3"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('bots')"><h6 class="text-secondary mb-1">🚀 Active Bots</h6><h4 id="dashActiveBots" class="text-info">-</h4></div></div>
+      
+      <div class="col-sm-6 col-md-3" id="dashCardLogins1"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('loginhistory'); loadLoginHistory();"><h6 class="text-secondary mb-1">🔑 Today's Logins</h6><h4 id="dashTodaysLogins">-</h4></div></div>
+      <div class="col-sm-6 col-md-3" id="dashCardLogins2"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('loginhistory'); loadLoginHistory();"><h6 class="text-secondary mb-1">📋 Total Logins</h6><h4 id="dashTotalLogins">-</h4></div></div>
+      <div class="col-sm-6 col-md-3" id="dashCardAudit"><div class="premium-card p-3 text-center" style="cursor:pointer" onclick="showSection('audit'); loadAuditLog();"><h6 class="text-secondary mb-1">📝 Audit Logs</h6><h4 id="dashAuditLogs">-</h4></div></div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="premium-card p-3 h-100">
+          <h6 class="mb-3">📈 Monthly User Growth (Last 30 Days)</h6>
+          <canvas id="chartUserGrowth" height="200"></canvas>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="premium-card p-3 h-100">
+          <h6 class="mb-3">🤖 Bot Usage Distribution</h6>
+          <div class="d-flex justify-content-center align-items-center flex-grow-1" style="min-height: 200px;">
+            <div style="width: 100%; max-width: 250px;">
+              <canvas id="chartBotUsage" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6" id="dashChartLoginActivityWrapper">
+        <div class="premium-card p-3 h-100">
+          <h6 class="mb-3">🔑 Login Activity (Last 7 Days)</h6>
+          <canvas id="chartLoginActivity" height="200"></canvas>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="premium-card p-3 h-100">
+          <h6 class="mb-3">📅 License Expiry Timeline</h6>
+          <canvas id="chartLicenseExpiry" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex mb-2 gap-2 flex-wrap" data-section="users">
+    <input id="searchInput" type="search" class="form-control form-control-premium form-control-sm" style="width:180px" placeholder="🔍 search username..." autocomplete="off">
+    <input id="tagFilter" type="search" class="form-control form-control-premium form-control-sm" style="width:140px" placeholder="🏷️ filter by tag" autocomplete="off">
+    <select id="perPage" class="form-select form-control-premium form-select-sm w-auto" aria-label="Users per page">
+      <option value="5">5 / page</option>
+      <option value="8">8 / page</option>
+      <option value="15">15 / page</option>
+      <option value="30">30 / page</option>
+      <option value="50" selected>50 / page</option>
+    </select>
+    {% if is_super %}
+    <button class="btn btn-outline-info btn-sm" id="clearAllBtn">🧹 Clear All Machines</button>
+    <button class="btn btn-outline-success btn-sm" id="downloadAllBtn">📥 Download All Users</button>
+    <button class="btn btn-outline-light btn-sm" id="backupDbBtn">💾 Backup DB</button>
+    {% else %}
+    <!-- Sub-admin: hidden by default, JS shows based on permissions -->
+    <button class="btn btn-outline-info btn-sm" id="clearAllBtn" style="display:none" aria-hidden="true">🧹 Clear All My Machines</button>
+    <button class="btn btn-outline-success btn-sm" id="downloadAllBtn" style="display:none" aria-hidden="true">📥 Download All Users</button>
+    {% endif %}
+    <button class="btn btn-premium btn-yellow text-dark btn-sm" id="bulkEnableBtn" {% if not is_super %}style="display:none"{% endif %}>✅ Enable Selected</button>
+    <button class="btn btn-outline-danger btn-sm" id="bulkDisableBtn" {% if not is_super %}style="display:none"{% endif %}>🚫 Disable Selected</button>
+      <button class="btn btn-outline-danger btn-sm" id="bulkDeleteBtn" {% if not is_super %}style="display:none"{% endif %}>🗑️ Delete Selected</button>
+    <span id="refreshBadge" class="badge bg-secondary ms-1" style="cursor:pointer;font-size:.75rem;-webkit-user-select:none;user-select:none" onclick="loadUsers(currentPage)" title="Click to refresh now">🔄 30s</span>
+  </div>
+  <div class="premium-card p-3 mb-3 section-hidden" id="bulkImportPanel" data-section="bulk">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">📦 Bulk CSV Import</h6>
+      <button class="btn btn-sm btn-outline-secondary" onclick="showSection('users')" title="Close bulk import" aria-label="Close">✕</button>
+    </div>
+    <div class="small text-secondary mb-2">Format: <code>username,expiry_date,activation_key</code> (one per line)</div>
+    <textarea id="bulkCsvInput" class="form-control form-control-premium form-control-sm font-monospace mb-2" rows="4" placeholder="user1,2025-12-31,mykey
+user2,,"></textarea>
+    <button class="btn btn-sm btn-premium btn-green" id="bulkImportBtn">Import CSV</button>
+    <div id="bulkImportResult" class="mt-2 small"></div>
+  </div>
+  {% if is_super %}
+  <!-- Maintenance Mode Panel -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="maintenance" style="border-color:#dc3545">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0 text-danger">🔧 Maintenance Mode</h6>
+      <span id="maintenanceBadge" class="badge bg-success">🟢 OFF</span>
+    </div>
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-7">
+        <input id="maintenanceMsg" class="form-control form-control-premium form-control-sm" placeholder="Message shown to users (optional)">
+      </div>
+      <div class="col-sm-auto">
+        <button class="btn btn-sm btn-premium btn-red" id="maintenanceEnableBtn">Enable</button>
+        <button class="btn btn-sm btn-premium btn-green" id="maintenanceDisableBtn">Disable</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}{# end is_super for maintenance/broadcast #}
+
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="devices">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">📱 Connected Devices (SMS Sync)</h6>
+      <button class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#addDeviceModal"><i class="bi bi-plus"></i> Add Device</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table-premium table-hover table-sm text-light">
+        <thead>
+          <tr>
+            <th>Device Name</th>
+            <th>Status</th>
+            <th>Last Ping</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="devicesTableBody">
+          <tr><td colspan="4" class="text-center">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Stats Chart — visible to anyone with VIEW_ANALYTICS permission -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="analytics">
+    <h6 class="mb-2">📊 Monthly Stats (New vs Expired)</h6>
+    <canvas id="statsChartCanvas" height="80"></canvas>
+  </div>
+
+  <!-- Expiry Calendar — visible to anyone with VIEW_ANALYTICS permission -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="analytics">
+    <h6 class="mb-2">📅 Expiry Calendar (Next 30 Days)</h6>
+    <div id="expiryCalendar" class="d-flex flex-wrap gap-1"></div>
+  </div>
+
+  {% if is_super %}
+  <!-- Sub-Admin Report — super-admin only -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="analytics">
+    <h6 class="mb-2">📈 Sub-Admin Activity Report</h6>
+    <div class="table-responsive" style="max-height:280px;overflow-y:auto">
+      <table class="table-premium table-dark table-sm table-striped mb-0">
+        <thead class="table-light" style="position:sticky;top:0">
+          <tr><th>Sub Admin</th><th>Total Actions</th><th>Add</th><th>Delete</th><th>Toggle</th><th>Renew</th><th>Expiry</th><th>Clear</th></tr>
+        </thead>
+        <tbody id="subadminReportTable"></tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+
+  <!-- Note History Modal -->
+  <div class="modal fade" id="noteHistoryModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">📝 Note History for <span id="noteHistoryUsername"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="max-height:360px;overflow-y:auto">
+          <table class="table-premium table-dark table-sm">
+            <thead><tr><th>Note</th><th>Admin</th><th>Time</th></tr></thead>
+            <tbody id="noteHistoryTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expiry Date Users Modal -->
+  <div class="modal fade" id="expiryUsersModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">📅 Users Expiring on <span id="expiryUsersDate" class="text-info"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="max-height:420px;overflow-y:auto">
+          <table class="table-premium table-dark table-sm table-hover mb-0">
+            <thead class="table-secondary" style="position:sticky;top:0">
+              <tr><th>#</th><th>Username</th><th>Activation Key</th><th>Status</th><th>Machine ID</th><th>Tags</th><th>Days Left</th></tr>
+            </thead>
+            <tbody id="expiryUsersTable"></tbody>
+          </table>
+          <div id="expiryUsersEmpty" class="text-center text-secondary py-3 d-none">No users found.</div>
+        </div>
+        <div class="modal-footer border-0">
+          <small id="expiryUserCount" class="text-secondary me-auto"></small>
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sub Admin Profile Modal -->
+  <div class="modal fade" id="subadminProfileModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">👤 Sub Admin Profile</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4 text-center">
+              <div class="mb-3 d-flex justify-content-center">
+                <div id="profAvatar" class="bg-primary text-white d-flex align-items-center justify-content-center rounded-circle fs-1" style="width:100px;height:100px;">
+                  <!-- Initials -->
+                </div>
+              </div>
+              <h5 id="profFullName" class="mb-1"></h5>
+              <p class="text-secondary mb-2" id="profUsername"></p>
+              <div class="mb-3" id="profStatusBadge"></div>
+              <p class="text-muted small mb-0">Role: <span id="profRole" class="text-info"></span></p>
+              <p class="text-muted small mb-0">Email: <span id="profEmail" class="text-light"></span></p>
+            </div>
+            <div class="col-md-8">
+              <h6 class="border-bottom border-secondary pb-2">Account Statistics</h6>
+              <div class="row g-2 mb-3">
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Quota</small><strong id="profQuota" class="text-info"></strong></div></div>
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Max Days</small><strong id="profMaxDays" class="text-warning"></strong></div></div>
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Assigned Users</small><strong id="profAssigned"></strong></div></div>
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Created Users</small><strong id="profCreated"></strong></div></div>
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Total Logins</small><strong id="profLogins"></strong></div></div>
+                <div class="col-6 col-sm-4"><div class="p-2 border border-secondary rounded text-center"><small class="text-muted d-block">Active / Expired</small><strong><span id="profActiveU" class="text-success"></span> / <span id="profExpiredU" class="text-danger"></span></strong></div></div>
+              </div>
+              
+              <div class="row g-2 text-muted small mb-3">
+                <div class="col-6"><strong>Created At:</strong> <span id="profCreatedDate"></span></div>
+                <div class="col-6"><strong>Last Login:</strong> <span id="profLastLogin"></span></div>
+              </div>
+              
+              <h6 class="border-bottom border-secondary pb-2">Assigned Bots</h6>
+              <div id="profBots" class="small mb-3 text-warning"></div>
+              
+              <h6 class="border-bottom border-secondary pb-2">Permissions</h6>
+              <div id="profPerms" class="small mb-3 d-flex flex-wrap gap-1"></div>
+            </div>
+          </div>
+          
+          <h6 class="border-bottom border-secondary pb-2 mt-2">Recent Activity</h6>
+          <div class="table-responsive">
+            <table class="table-premium table-dark table-sm table-bordered text-center align-middle mb-0" style="font-size:0.85rem;">
+              <thead><tr><th>Action</th><th>Target</th><th>Detail</th><th>Time</th></tr></thead>
+              <tbody id="profActivityBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary flex-wrap">
+          <!-- Profile Actions -->
+          <button type="button" class="btn btn-sm btn-premium btn-yellow text-dark" id="profBtnToggle">Toggle Status</button>
+          <button type="button" class="btn btn-sm btn-outline-info" id="profBtnPerms">View Permissions</button>
+          <button type="button" class="btn btn-sm btn-outline-info" id="profBtnBots">View Bots</button>
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" id="profBtnUsers">View Users</button>
+          <div class="ms-auto"></div>
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions Modal (SUPER_ADMIN) -->
+  <div class="modal fade" id="permsModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">🛡️ Permissions for <span id="permsModalUsername"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2" id="permsCheckboxes"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-sm btn-premium btn-green" id="permsSaveBtn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bot Access Modal (SUPER_ADMIN) -->
+  <div class="modal fade" id="botsModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">🤖 Bot Access for <span id="botsModalUsername" class="text-warning"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-secondary small mb-2">
+            ✅ Checked = sub-admin's users CAN use this bot<br>
+            ☐ Unchecked = users CANNOT use this bot<br>
+            <span class="text-info">All unchecked = no restrictions (all bots allowed)</span>
+          </p>
+          <div id="botsModalLoading" class="text-center text-secondary py-3">Loading bots...</div>
+          <div class="row g-2" id="botsCheckboxes"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <small class="text-secondary me-auto" id="botsModalHint"></small>
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-sm btn-premium btn-yellow text-dark" id="botsSaveBtn">💾 Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-User Bot Blocks Modal -->
+  <div class="modal fade" id="userBotsModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background:#0b1424; border:1px solid #1a3a6a;">
+        <div class="modal-header border-0 pb-0">
+          <h6 class="modal-title">🤖 Bot Access for <span id="userBotsModalName" class="text-warning"></span></h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="max-height:400px;overflow-y:auto">
+          <p class="text-secondary small mb-2">
+            🟢 <b>ALLOWED</b> = bot is accessible &nbsp;|&nbsp; 🔴 <b>BLOCKED</b> = bot is blocked for this user
+          </p>
+          <div id="userBotsModalLoading" class="text-center text-secondary py-3">Loading...</div>
+          <div id="userBotsList"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <small class="text-secondary me-auto" id="userBotsModalHint"></small>
+          <button type="button" class="btn btn-sm btn-premium btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive card p-2" data-section="users">
+    <table class="table-premium table-dark table-striped mb-0">
+      <thead class="table-light" style="position:sticky;top:0;z-index:2;background-color:#f8f9fa">
+        <tr>
+          <th><input type="checkbox" id="selectAll" title="Select All"></th>
+          <th>#</th>
+          <th>Username</th>
+          {% if is_super %}
+          <th>Created By</th>
+          {% endif %}
+          <th>Activation Key</th>
+          <th>Status</th>
+          <th>Machine ID</th>
+          <th>Expiry</th>
+          <th>Days Left</th>
+          <th id="loginsHeader" title="Total login count">🔑 Logins</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="userTable"></tbody>
+    </table>
+  </div>
+
+  <nav class="mt-3" data-section="users">
+    <ul class="pagination pagination-sm" id="pagination"></ul>
+  </nav>
+  {% if is_super %}
+  <div class="premium-card p-3 mb-3 mt-3" data-section="audit">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">📋 Audit Log</h6>
+      <div class="d-flex gap-2">
+        <input id="auditSearch" class="form-control form-control-premium form-control-sm" style="width:200px" placeholder="Search admin/action/user...">
+        <button class="btn btn-sm btn-outline-info" id="auditRefreshBtn">Refresh</button>
+      </div>
+    </div>
+    <div class="table-responsive" style="max-height:320px;overflow-y:auto;">
+      <table class="table-premium table-dark table-sm table-striped mb-0" style="font-size:0.8rem;">
+        <thead class="table-light" style="position:sticky;top:0;">
+          <tr>
+            <th>#</th>
+            <th>Admin</th>
+            <th>Role</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Detail</th>
+            <th>Time (UTC)</th>
+          </tr>
+        </thead>
+        <tbody id="auditLogTable"></tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+
+  <!-- User Activity Summary Section -->
+  <div class="premium-card p-3 mb-3 section-hidden" data-section="activitysummary">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h6 class="mb-0">📋 User Activity Summary</h6>
+      <div class="d-flex gap-2 align-items-center">
+        <input id="actSrchInput" class="form-control form-control-premium form-control-sm" style="width:180px" placeholder="Search username...">
+        <span id="activityMeta" class="text-secondary small"></span>
+        <button class="btn btn-sm btn-outline-info" onclick="loadActivitySummary()">🔄 Refresh</button>
+      </div>
+    </div>
+    <!-- Top 10 Active Users (Last 30 Days) -->
+    <div id="actTop10Container" class="mb-3" style="display:none">
+      <div class="small text-warning fw-bold mb-2">🏆 Top 10 Most Active Users — Last 30 Days</div>
+      <div id="actTop10Cards" class="row g-2"></div>
+      <hr class="border-secondary mt-3">
+    </div>
+    <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+      <table class="table-premium table-dark table-hover table-sm mb-0" style="font-size:0.82rem;">
+        <thead class="table-light" style="position:sticky;top:0;">
+          <tr><th>#</th><th>Username</th><th>Status</th><th>Logins</th><th>Last Login</th><th>Days Ago</th><th>Top Bot</th></tr>
+        </thead>
+        <tbody id="activitySummaryBody">
+          <tr><td colspan="7" class="text-center text-secondary py-3">Click Refresh to load</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- My Account Section -->
+  <div class="section-hidden" data-section="myaccount">
+    <div class="row justify-content-center">
+      <div class="col-md-8 col-lg-6">
+        <div class="premium-card p-4">
+          <h5 class="border-bottom border-secondary pb-2 mb-3">👤 My Profile</h5>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Full Name:</div>
+            <div class="col-sm-8 fw-bold" id="myAccFullName">-</div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Email:</div>
+            <div class="col-sm-8 fw-bold" id="myAccEmail">-</div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Username:</div>
+            <div class="col-sm-8 fw-bold text-info" id="myAccUsername">-</div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Role:</div>
+            <div class="col-sm-8 fw-bold" id="myAccRole">-</div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Status:</div>
+            <div class="col-sm-8 fw-bold" id="myAccStatus">-</div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-sm-4 text-secondary small">Created At:</div>
+            <div class="col-sm-8 small" id="myAccCreatedAt">-</div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-sm-4 text-secondary small">Last Login:</div>
+            <div class="col-sm-8 small" id="myAccLastLogin">-</div>
+          </div>
+          
+          <h6 class="border-bottom border-secondary pb-2 mb-2 mt-4 text-info">📊 Account Statistics</h6>
+          <div class="row mb-1">
+            <div class="col-sm-6 text-secondary small">Assigned Users: <span class="text-light" id="myAccAssignedUsers">0</span></div>
+            <div class="col-sm-6 text-secondary small">Created Users: <span class="text-light" id="myAccCreatedUsers">0</span></div>
+          </div>
+          
+          <h6 class="border-bottom border-secondary pb-2 mb-2 mt-4 text-info">🤖 Assigned Bots</h6>
+          <div class="mb-3" id="myAccBots">-</div>
+          
+          <h6 class="border-bottom border-secondary pb-2 mb-2 mt-4 text-info" id="myAccPermsHeader">🛡️ Permissions</h6>
+          <div class="mb-4 d-flex flex-wrap gap-1" id="myAccPerms">-</div>
+          
+          <div class="text-center mt-3" id="myAccActionBtns">
+            <button class="btn btn-premium btn-yellow text-dark" data-bs-toggle="modal" data-bs-target="#changePasswordModal">🔑 Change Password</button>
+            <button class="btn btn-premium btn-cyan ms-2" id="btnEditProfile" style="display:none;" onclick="openEditProfileModal()">✏️ Edit Profile</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+<!-- Edit Profile Modal -->
+<div class="modal fade" id="editProfileModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content text-light" style="background:#1a222f">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title">✏️ Edit Profile</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label text-info">Full Name</label>
+          <input type="text" id="epFullName" class="form-control form-control-premium bg-dark text-light border-secondary">
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-info">Email</label>
+          <input type="email" id="epEmail" class="form-control form-control-premium bg-dark text-light border-secondary">
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-info">Username (Required)</label>
+          <input type="text" id="epUsername" class="form-control form-control-premium bg-dark text-light border-secondary" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-info">New Password (Leave blank to keep current)</label>
+          <input type="password" id="epPassword" class="form-control form-control-premium bg-dark text-light border-secondary">
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-premium btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-premium btn-cyan" onclick="saveProfile()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div><!-- container-fluid -->
+</div><!-- mainContent -->
+</div><!-- page-wrapper -->
+
+
+<script>
+const IS_SUPER = {{ 'true' if is_super else 'false' }};
+
+// Fix: Bootstrap 5 aria-hidden focus warning — blur any focused element before modal hides
+document.addEventListener('hide.bs.modal', function(e) {
+  var focused = e.target.querySelector(':focus');
+  if (focused) focused.blur();
+}, true);
+
+// Security Helpers for XSS Prevention
+function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+function escapeJS(str) {
+    if (str === null || str === undefined) return '';
+    var s = String(str), out = '';
+    for (var i = 0; i < s.length; i++) {
+        var c = s.charCodeAt(i);
+        if      (c === 92) out += String.fromCharCode(92,92);
+        else if (c === 39) out += String.fromCharCode(92,39);
+        else if (c === 34) out += String.fromCharCode(92,34);
+        else if (c === 10) out += String.fromCharCode(92,110);
+        else if (c === 13) out += String.fromCharCode(92,114);
+        else               out += s[i];
+    }
+    return out;
+}
+
+// ===== Section Navigation =====
+const ALL_SECTIONS = ['dashboard','users','adduser','bulk','subadmin','bots','analytics','maintenance','loginhistory','audit','loginattempts','activitysummary','createsubadmin','myaccount'];
+let _statsChartRef = null;
+// ===== DASHBOARD STATS & CHARTS =====
+let dashCharts = {};
+async function loadDashboardStats(){
+  try {
+    const res = await apiFetch('/api/admin/stats');
+    if(res.status === 'ok'){
+      const d = res.data;
+      document.getElementById('dashTotalUsers').textContent = d.total_users;
+      document.getElementById('dashActiveUsers').textContent = d.active_users;
+      document.getElementById('dashExpiredUsers').textContent = d.expired_users;
+      document.getElementById('dashDisabledUsers').textContent = d.disabled_users;
+      
+      if(IS_SUPER){
+        document.getElementById('dashCardSubAdmins').style.display = '';
+        document.getElementById('dashTotalSubAdmins').textContent = d.total_subadmins;
+      }
+      
+      document.getElementById('dashTotalBots').textContent = d.total_bots;
+      document.getElementById('dashActiveBots').textContent = d.active_bots;
+      
+      if(IS_SUPER || MY_PERMS.has('VIEW_LOGIN_HISTORY')){
+        document.getElementById('dashTodaysLogins').textContent = d.todays_logins;
+        document.getElementById('dashTotalLogins').textContent = d.total_logins;
+      } else {
+        document.getElementById('dashCardLogins1').style.display = 'none';
+        document.getElementById('dashCardLogins2').style.display = 'none';
+        document.getElementById('dashChartLoginActivityWrapper').style.display = 'none';
+      }
+      
+      if(IS_SUPER || MY_PERMS.has('VIEW_AUDIT_LOG')){
+        document.getElementById('dashAuditLogs').textContent = d.total_audit_logs;
+      } else {
+        document.getElementById('dashCardAudit').style.display = 'none';
+      }
+      
+      // Load Charts
+      await loadDashboardCharts();
+    }
+  } catch(e) { console.error('Stats error:', e); }
+}
+
+async function loadDashboardCharts(){
+  try {
+    const res = await apiFetch('/api/admin/dashboard_charts');
+    if(res.status !== 'ok') return;
+    const d = res.data;
+
+    // User Growth Chart
+    const ctxUser = document.getElementById('chartUserGrowth');
+    if(ctxUser) {
+      if(!dashCharts.userGrowth) {
+        dashCharts.userGrowth = new Chart(ctxUser, {
+          type: 'line',
+          data: { labels: d.user_growth.labels, datasets: [{ label: 'Users', data: d.user_growth.data, borderColor: '#0d6efd', tension: 0.1 }] },
+          options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+      } else {
+        dashCharts.userGrowth.data.labels = d.user_growth.labels;
+        dashCharts.userGrowth.data.datasets[0].data = d.user_growth.data;
+        dashCharts.userGrowth.update();
+      }
+    }
+    
+    // Bot Usage
+    const ctxBot = document.getElementById('chartBotUsage');
+    if(ctxBot) {
+      if(!dashCharts.botUsage) {
+        dashCharts.botUsage = new Chart(ctxBot, {
+          type: 'doughnut',
+          data: { labels: d.bot_usage.labels, datasets: [{ data: d.bot_usage.data, backgroundColor: ['#0d6efd', '#dc3545', '#ffc107', '#198754', '#6c757d'] }] },
+          options: { responsive: true }
+        });
+      } else {
+        dashCharts.botUsage.data.labels = d.bot_usage.labels;
+        dashCharts.botUsage.data.datasets[0].data = d.bot_usage.data;
+        dashCharts.botUsage.update();
+      }
+    }
+
+    // Login Activity
+    const ctxLogin = document.getElementById('chartLoginActivity');
+    if(ctxLogin && (IS_SUPER || MY_PERMS.has('VIEW_LOGIN_HISTORY'))) {
+      if(!dashCharts.loginActivity) {
+        dashCharts.loginActivity = new Chart(ctxLogin, {
+          type: 'bar',
+          data: { labels: d.login_activity.labels, datasets: [{ label: 'Logins', data: d.login_activity.data, backgroundColor: '#198754' }] },
+          options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+      } else {
+        dashCharts.loginActivity.data.labels = d.login_activity.labels;
+        dashCharts.loginActivity.data.datasets[0].data = d.login_activity.data;
+        dashCharts.loginActivity.update();
+      }
+    }
+    
+    // License Expiry
+    const ctxExpiry = document.getElementById('chartLicenseExpiry');
+    if(ctxExpiry) {
+      if(!dashCharts.licenseExpiry) {
+        dashCharts.licenseExpiry = new Chart(ctxExpiry, {
+          type: 'line',
+          data: { labels: d.license_expiry.labels, datasets: [{ label: 'Expiries', data: d.license_expiry.data, borderColor: '#dc3545', tension: 0.1, fill:true, backgroundColor:'rgba(220,53,69,0.2)' }] },
+          options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+      } else {
+        dashCharts.licenseExpiry.data.labels = d.license_expiry.labels;
+        dashCharts.licenseExpiry.data.datasets[0].data = d.license_expiry.data;
+        dashCharts.licenseExpiry.update();
+      }
+    }
+  } catch(e) { console.error('Dashboard charts error:', e); }
+}
+
+// ===== MY ACCOUNT =====
+async function loadMyAccount(){
+  try {
+    const res = await apiFetch('/api/admin/my_account_info');
+    if(res.status === 'ok'){
+      const d = res.data;
+      document.getElementById('myAccFullName').textContent = d.full_name || '-';
+      document.getElementById('myAccEmail').textContent = d.email || '-';
+      document.getElementById('myAccUsername').textContent = d.username;
+      document.getElementById('myAccRole').textContent = d.role;
+      document.getElementById('myAccStatus').innerHTML = d.is_active === 'Active' ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>';
+      
+      let dateObj = new Date(d.created_at);
+      document.getElementById('myAccCreatedAt').textContent = isNaN(dateObj) ? d.created_at : dateObj.toLocaleString();
+      
+      let loginObj = new Date(d.last_login);
+      document.getElementById('myAccLastLogin').textContent = (d.last_login==='Never' || isNaN(loginObj)) ? d.last_login : loginObj.toLocaleString();
+      
+      document.getElementById('myAccAssignedUsers').textContent = d.assigned_users;
+      document.getElementById('myAccCreatedUsers').textContent = d.created_users;
+      
+      const botsDiv = document.getElementById('myAccBots');
+      botsDiv.innerHTML = d.assigned_bots.map(b => `<span class="badge bg-secondary me-1 mb-1">${b}</span>`).join('');
+      
+      const permsDiv = document.getElementById('myAccPerms');
+      if(d.role === 'SUPER_ADMIN'){
+        document.getElementById('myAccPermsHeader').style.display = '';
+        permsDiv.style.display = 'flex';
+        permsDiv.innerHTML = '<span class="badge bg-success">All Permissions (Super Admin)</span>';
+      } else {
+        // Hide permissions for sub admin
+        document.getElementById('myAccPermsHeader').style.display = 'none';
+        permsDiv.style.display = 'none';
+      }
+
+      // Show Edit Profile button if Super Admin or if Sub Admin has EDIT_PROFILE permission
+      if(IS_SUPER || d.permissions.includes('EDIT_PROFILE')){
+        document.getElementById('btnEditProfile').style.display = 'inline-block';
+        // Store for modal
+        window._myAccountData = d;
+      } else {
+        document.getElementById('btnEditProfile').style.display = 'none';
+      }
+    }
+  } catch(e) { console.error('My Account error:', e); }
+}
+
+function openEditProfileModal() {
+  if(!window._myAccountData) return;
+  const d = window._myAccountData;
+  document.getElementById('epFullName').value = d.full_name || '';
+  document.getElementById('epEmail').value = d.email || '';
+  document.getElementById('epUsername').value = d.username || '';
+  document.getElementById('epPassword').value = '';
+  new bootstrap.Modal(document.getElementById('editProfileModal')).show();
+}
+
+async function saveProfile() {
+  const full_name = document.getElementById('epFullName').value;
+  const email = document.getElementById('epEmail').value;
+  const username = document.getElementById('epUsername').value;
+  const password = document.getElementById('epPassword').value;
+
+  if(!username) return toast('Username is required.');
+
+  try {
+    const res = await apiFetch('/api/admin/edit_profile', 'POST', {
+      full_name, email, username, password
+    });
+    if(res.status === 'ok') {
+      toast(res.message);
+      bootstrap.Modal.getInstance(document.getElementById('editProfileModal')).hide();
+      loadMyAccount();
+    } else {
+      toast('Error: ' + res.message);
+    }
+  } catch(e) {
+    console.error(e);
+    toast('Failed to update profile.');
+  }
+}
+
+
+function showSection(id){
+  document.querySelectorAll('[data-section]').forEach(el => {
+    const matches = el.dataset.section === id;
+    el.classList.toggle('section-hidden', !matches);
+  });
+  ALL_SECTIONS.forEach(s => {
+    const mn = document.getElementById('menu-'+s);
+    if(mn) mn.classList.toggle('active', s === id);
+  });
+  if(id === 'dashboard') loadDashboardStats();
+  if(id === 'myaccount') loadMyAccount();
+  if(id === 'analytics'){
+    loadStatsChart();
+    loadExpiryCalendar();
+    if(IS_SUPER) loadSubadminReport();
+  }
+  if(id === 'adduser'){
+    const inp = document.querySelector('[data-section="adduser"] input[name="username"]');
+    if(inp) setTimeout(()=>inp.focus(), 50);
+  }
+  // Auto-load sub-admin activity summary when switching to subadmin section
+  if(id === 'subadmin' && IS_SUPER && typeof loadSubadminActivity === 'function'){
+    setTimeout(loadSubadminActivity, 50);
+  }
+  // Auto-load login history data when section opened
+  if(id === 'loginhistory' && typeof loadLoginHistory === 'function'){
+    loadLoginHistory();
+  }
+  // Auto-load admin login attempts when section opened (SUPER_ADMIN only)
+  if(id === 'loginattempts' && IS_SUPER && typeof loadLoginAttempts === 'function'){
+    loadLoginAttempts();
+  }
+  // Auto-load activity summary when section opened
+  if(id === 'activitysummary' && (IS_SUPER || MY_PERMS.has('VIEW_ACTIVITY_SUMMARY')) && typeof loadActivitySummary === 'function'){
+    loadActivitySummary();
+  }
+  window._currentSection = id;
+  if(id === 'adduser') loadAddUserBots();
+  if(id === 'createsubadmin' && IS_SUPER) initCSAForm();
+  if(id === 'audit') loadAuditLog();
+  if(id === 'bots'){ loadLiveApps(); loadBots(); }
+  if(id === 'maintenance') loadMaintenanceStatus();
+}
+// Initialise section visibility on page load
+showSection('dashboard');
+
+const autoRefreshInterval = 30000;
+let currentPage = 1;
+let MY_PERMS = new Set([]);  // Will be set by loadMyPerms
+const _subadminPermsMap = {}; // username -> permissions array
+window._showLoginsCol = false; // set properly by applyPermissionsToUI
+
+// Load sub-admin permissions from server before first render
+let _statusFilter = ''; // '' = all, 'active' = ENABLED non-expired, 'expired' = expired
+async function loadMyPerms(){
+  if(IS_SUPER){
+    MY_PERMS = new Set({{ all_perms_json | safe }});
+    loadUsers(1);
+    loadSubadmins();
+    applyPermissionsToUI();
+    showSection('dashboard');
+    return;
+  }
+  try{
+    const res = await fetch('/api/admin/my_perms');
+    const data = await res.json();
+    if(data.status === 'ok') MY_PERMS = new Set(data.data);
+  }catch(e){ console.error('Failed to load perms', e); }
+  loadUsers(1);
+  loadSubadmins();
+  applyPermissionsToUI();
+  showSection('dashboard');
+}
+loadMyPerms();
+
+// Hide/show sidebar menu items and sections based on permissions
+function applyPermissionsToUI(){
+  // Analytics & Audit are hidden by default in HTML (display:none)
+  // Super-admin sees them always; sub-admins only with the right perm
+  const alwaysShowForSuper = ['menu-analytics', 'menu-audit', 'menu-loginhistory', 'menu-loginattempts', 'menu-activitysummary'];
+  if(IS_SUPER){
+    alwaysShowForSuper.forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.style.display = '';
+    });
+    return; // Super admins see everything else too
+  }
+
+  // Sub-admin: Map permission key -> sidebar menu id and section name
+  const permMenuMap = [
+    { perm: 'ADD_USER',               menuId: 'menu-adduser',        section: 'adduser'         },
+    { perm: 'BULK_IMPORT',            menuId: 'menu-bulk',           section: 'bulk'            },
+    { perm: 'VIEW_ANALYTICS',         menuId: 'menu-analytics',      section: 'analytics'       },
+    { perm: 'VIEW_AUDIT_LOG',         menuId: 'menu-audit',          section: 'audit'           },
+    { perm: 'VIEW_LOGIN_HISTORY',     menuId: 'menu-loginhistory',   section: 'loginhistory'    },
+    { perm: 'VIEW_ACTIVITY_SUMMARY',  menuId: 'menu-activitysummary',section: 'activitysummary' },
+    { perm: 'VIEW_STORE',             menuId: 'menu-store',          section: null              },
+  ];
+
+  permMenuMap.forEach(item => {
+    const hasP = MY_PERMS.has(item.perm);
+    const menuEl = document.getElementById(item.menuId);
+    if(menuEl) menuEl.style.display = hasP ? '' : 'none';
+    // If sub-admin is on a now-forbidden section, redirect to users
+    if(!hasP && window._currentSection === item.section){
+      showSection('dashboard');
+    }
+  });
+
+  // Hide the Download button if not permitted
+  const dlBtn = document.getElementById('downloadAllBtn');
+  if(dlBtn) dlBtn.style.display = MY_PERMS.has('DOWNLOAD_USERS') ? '' : 'none';
+
+  // Clear All Machines button — needs CLEAR_ALL_MACHINES permission
+  const clearAllBtnEl = document.getElementById('clearAllBtn');
+  if(clearAllBtnEl) clearAllBtnEl.style.display = MY_PERMS.has('CLEAR_ALL_MACHINES') ? '' : 'none';
+
+  // Bulk Enable / Disable Selected — needs TOGGLE_USER permission
+  const bulkEnableEl  = document.getElementById('bulkEnableBtn');
+  const bulkDisableEl = document.getElementById('bulkDisableBtn');
+  const showBulkToggle = MY_PERMS.has('TOGGLE_USER');
+  if(bulkEnableEl)  bulkEnableEl.style.display  = showBulkToggle ? '' : 'none';
+  if(bulkDisableEl) bulkDisableEl.style.display = showBulkToggle ? '' : 'none';
+  const bulkDeleteEl = document.getElementById('bulkDeleteBtn');
+  const showBulkDelete = MY_PERMS.has('DELETE_USER');
+  if(bulkDeleteEl) bulkDeleteEl.style.display = showBulkDelete ? '' : 'none';
+
+  // Logins column — only visible if VIEW_LOGIN_HISTORY permission
+  const loginsHdr = document.getElementById('loginsHeader');
+  const showLogins = MY_PERMS.has('VIEW_LOGIN_HISTORY');
+  if(loginsHdr) loginsHdr.style.display = showLogins ? '' : 'none';
+  // Also mark for renderTable to know whether to include cell
+  window._showLoginsCol = showLogins;
+}
+
+
+
+async function apiFetch(path, method='GET', data=null){
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const opts = {method, headers:{'X-CSRFToken': csrfToken}};
+  if(data){
+    opts.headers['Content-Type']='application/json';
+    opts.body = JSON.stringify(data);
+  }
+  const res = await fetch(path, opts);
+  if(res.status === 401){
+    toast('Session expired. Redirecting to login.');
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+  return res.json();
+}
+
+function populateSubadminSelects(rows){
+  const names = (rows || []).map(r => r.username);
+  const selectIds = ['assignSubadminSelect', 'unassignSubadminSelect', 'subadminUsersSelect'];
+  for(const id of selectIds){
+    const sel = document.getElementById(id);
+    if(!sel) continue;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Select sub-admin...</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    if(cur && names.includes(cur)) sel.value = cur;
+  }
+}
+
+async function refreshUserSuggestions(q){
+  if(!IS_SUPER) return;
+  const dl = document.getElementById('userSuggestList');
+  if(!dl) return;
+  if(!q || q.length < 1){
+    dl.innerHTML = '';
+    return;
+  }
+  try{
+    const res = await apiFetch(`/api/admin/user_suggestions?search=${encodeURIComponent(q)}`);
+    const arr = res.data || [];
+    dl.innerHTML = arr.map(u => `<option value="${u}"></option>`).join('');
+  }catch(e){
+    console.error(e);
+  }
+}
+
+let _userSuggestTimer = null;
+function queueUserSuggest(q){
+  clearTimeout(_userSuggestTimer);
+  _userSuggestTimer = setTimeout(()=> refreshUserSuggestions(q), 200);
+}
+
+async function loadSubadminUsers(){
+  const sel = document.getElementById('subadminUsersSelect');
+  const tbody = document.getElementById('assignedUsersTable');
+  const meta = document.getElementById('assignedUsersMeta');
+  if(!sel || !tbody || !meta) return;
+
+  const subadmin = (sel.value || '').trim();
+  if(!subadmin){
+    tbody.innerHTML = '';
+    meta.textContent = 'Select a sub-admin to see assigned users.';
+    return;
+  }
+
+  try{
+    const res = await apiFetch(`/api/admin/subadmin_users?subadmin=${encodeURIComponent(subadmin)}`);
+    if(res.status !== 'ok'){
+      meta.textContent = res.message || 'Failed to load assigned users';
+      tbody.innerHTML = '';
+      return;
+    }
+    const users = (res.data && res.data.users) ? res.data.users : [];
+    meta.textContent = `Total: ${users.length}`;
+    tbody.innerHTML = '';
+    for(const u of users){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${u.username}</td>
+        <td><span class="badge ${u.status==='ENABLED'?'bg-success':'bg-warning text-dark'}">${u.status}</span></td>
+        <td>${u.expiry_date || ''}</td>
+        <td>${u.is_created ? '<span class="badge bg-info text-dark">CREATED</span>' : '<span class="badge bg-secondary">ASSIGNED</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }catch(e){
+    console.error(e);
+  }
+}
+
+function viewAssignedUsers(username){
+  const sel = document.getElementById('subadminUsersSelect');
+  if(!sel) return;
+  sel.value = username;
+  loadSubadminUsers();
+}
+
+async function toggleSubadmin(username, is_active){
+  if(!IS_SUPER) return;
+  const res = await apiFetch('/api/admin/toggle_subadmin', 'POST', {username, is_active});
+  toast(res.message || JSON.stringify(res));
+  await loadSubadmins();
+}
+
+async function promptQuota(username, current){
+  if(!IS_SUPER) return;
+  const v = prompt(`Set quota (max users) for ${username}:`, String(current ?? 10));
+  if(!v) return;
+  const max_users = parseInt(v);
+  if(!max_users || max_users <= 0){
+    toast('Invalid quota');
+    return;
+  }
+  const res = await apiFetch('/api/admin/update_subadmin_quota', 'POST', {username, max_users});
+  toast(res.message || JSON.stringify(res));
+  await loadSubadmins();
+}
+
+async function promptMaxExpiry(username, current){
+  if(!IS_SUPER) return;
+  const v = prompt(`Set max expiry days for ${username} (0 = Unlimited):`, String(current ?? 0));
+  if(v === null) return;
+  const max_expiry_days = parseInt(v);
+  if(isNaN(max_expiry_days) || max_expiry_days < 0){
+    toast('Invalid value. Use 0 for unlimited.');
+    return;
+  }
+  const res = await apiFetch('/api/admin/update_subadmin_max_expiry', 'POST', {username, max_expiry_days});
+  toast(res.message || JSON.stringify(res));
+  await loadSubadmins();
+}
+
+// ===== Sub Admin Profile Modal =====
+async function openSubadminProfile(username) {
+  try {
+    const res = await apiFetch(`/api/admin/subadmin_profile?username=${encodeURIComponent(username)}`);
+    if (res.status !== 'ok') {
+      toast(res.message || 'Failed to load profile');
+      return;
+    }
+    const d = res.data;
+    
+    // Header Data
+    const initials = (d.full_name || d.username).substring(0,2).toUpperCase();
+    document.getElementById('profAvatar').textContent = initials;
+    document.getElementById('profFullName').textContent = d.full_name || 'No Name Set';
+    document.getElementById('profUsername').textContent = '@' + d.username;
+    document.getElementById('profEmail').textContent = d.email || 'N/A';
+    document.getElementById('profRole').textContent = d.role;
+    document.getElementById('profStatusBadge').innerHTML = d.is_active 
+      ? '<span class="badge bg-success fs-6">ACTIVE</span>' 
+      : '<span class="badge bg-danger fs-6">DISABLED</span>';
+    
+    // Stats
+    document.getElementById('profQuota').textContent = d.max_users > 0 ? d.max_users : '∞';
+    document.getElementById('profMaxDays').textContent = d.max_expiry_days > 0 ? d.max_expiry_days + 'd' : '∞';
+    document.getElementById('profAssigned').textContent = d.assigned_users;
+    document.getElementById('profCreated').textContent = d.created_users;
+    document.getElementById('profLogins').textContent = d.total_logins;
+    document.getElementById('profActiveU').textContent = d.active_users;
+    document.getElementById('profExpiredU').textContent = d.expired_users;
+    
+    // Dates
+    document.getElementById('profCreatedDate').textContent = d.created_at ? new Date(d.created_at).toLocaleString() : 'N/A';
+    document.getElementById('profLastLogin').textContent = d.last_login !== 'Never' ? new Date(d.last_login).toLocaleString() : 'Never';
+    
+    // Bots
+    document.getElementById('profBots').textContent = (d.assigned_bots || []).join(', ') || 'None';
+    
+    // Permissions (badges)
+    const permsDiv = document.getElementById('profPerms');
+    permsDiv.innerHTML = '';
+    (d.permissions || []).forEach(p => {
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-secondary';
+      badge.textContent = ALL_PERM_LABELS[p] || p;
+      permsDiv.appendChild(badge);
+    });
+    if(d.permissions.length === 0) permsDiv.textContent = 'None';
+    
+    // Activity Table
+    const tbody = document.getElementById('profActivityBody');
+    tbody.innerHTML = '';
+    if(d.recent_activity && d.recent_activity.length > 0){
+      d.recent_activity.forEach(a => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${a.action}</td>
+          <td>${a.target || '-'}</td>
+          <td>${a.detail || '-'}</td>
+          <td>${new Date(a.time).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No recent activity found.</td></tr>';
+    }
+    
+    // Wire up buttons
+    document.getElementById('profBtnToggle').onclick = () => {
+      toggleSubadmin(d.username, d.is_active ? 0 : 1);
+      // close profile to force reload on next click
+      const m = bootstrap.Modal.getInstance(document.getElementById('subadminProfileModal'));
+      if(m) m.hide();
+    };
+    document.getElementById('profBtnPerms').onclick = () => { openPermsModal(d.username); };
+    document.getElementById('profBtnBots').onclick = () => { openBotsModal(d.username); };
+    document.getElementById('profBtnUsers').onclick = () => { viewAssignedUsers(d.username); };
+    
+    new bootstrap.Modal(document.getElementById('subadminProfileModal')).show();
+  } catch(e) {
+    console.error(e);
+    toast('Error loading profile');
+  }
+}
+
+async function deleteSubadmin(username){
+  if(!IS_SUPER) return;
+  if(!confirm(`Delete sub-admin ${username}? Their created users will be DISABLED.`)) return;
+  const res = await apiFetch('/api/admin/delete_subadmin', 'POST', {username});
+  toast(res.message || JSON.stringify(res));
+  await loadSubadmins();
+  await loadUsers(1);
+}
+
+// ===== openUsersByStatus — unified stat-card click handler =====
+/**
+ * Switch to Users section and apply a status filter cleanly.
+ * @param {string} status  '' | 'active' | 'expired' | 'disabled'
+ */
+function openUsersByStatus(status){
+  // 1. Clear search & tag filter inputs so results match the card exactly
+  const searchEl = document.getElementById('searchInput');
+  if(searchEl) searchEl.value = '';
+  const tagEl = document.getElementById('tagFilter');
+  if(tagEl) tagEl.value = '';
+
+  // 2. Apply filter state and reset pagination
+  _statusFilter = status;
+  currentPage = 1;
+
+  // 3. Navigate to Users section (shows/hides sections, sets sidebar active)
+  showSection('users');
+
+  // 4. Load users with the new filter (section is now visible)
+  loadUsers(1);
+
+  // 5. Highlight the matching stats-panel card with a glow border
+  const _statusPanelCards = document.querySelectorAll('#statsPanel .card');
+  _statusPanelCards.forEach(c => { c.style.boxShadow = ''; c.style.outline = ''; });
+  if(status !== ''){
+    const idxMap = { active: 1, expired: 2, disabled: 3 };
+    const idx = idxMap[status];
+    if(idx !== undefined && _statusPanelCards[idx]){
+      _statusPanelCards[idx].style.boxShadow = '0 0 0 3px rgba(255,255,255,.5)';
+    }
+  } else {
+    // 'all' → highlight first card (Total Users)
+    if(_statusPanelCards[0]) _statusPanelCards[0].style.boxShadow = '0 0 0 3px rgba(255,255,255,.3)';
+    // Remove highlight after 1 second
+    setTimeout(() => {
+      if(_statusPanelCards[0]) _statusPanelCards[0].style.boxShadow = '';
+    }, 1000);
+  }
+}
+// Backward-compat alias — stats-panel cards and legacy callers still work
+function filterByStatus(status){ openUsersByStatus(status); }
+window.filterByStatus    = filterByStatus;
+window.openUsersByStatus = openUsersByStatus;
+
+async function loadUsers(page=1){
+  currentPage = page;
+  const per_page = document.getElementById('perPage').value;
+  const search = document.getElementById('searchInput').value.trim();
+  const tagF = (document.getElementById('tagFilter')?.value || '').trim();
+  const url = `/api/users?page=${page}&per_page=${per_page}&search=${encodeURIComponent(search)}&tags=${encodeURIComponent(tagF)}&status_filter=${encodeURIComponent(_statusFilter)}`;
+  try{
+    const data = await apiFetch(url);
+    if(data.status === 'ok'){
+      const perPageVal = parseInt(per_page);
+      const offset = (data.data.current_page - 1) * perPageVal;
+      renderTable(data.data.users, offset);
+      renderPagination(data.data.total_pages, data.data.current_page);
+    }
+  }catch(e){console.error(e);}
+}
+
+function renderTable(users, pageOffset){
+  const tbody = document.getElementById('userTable');
+  tbody.innerHTML = '';
+  let idx = pageOffset || 0;
+  const today = new Date();
+  for(const u of users){
+    idx++;
+    const tr = document.createElement('tr');
+    
+    const safeUser = escapeHTML(u.username);
+    const jsUser = escapeJS(u.username);
+    const safeNote = escapeHTML(u.note || '-');
+    const safeTags = escapeHTML(u.tags || '');
+    const safeMachine = escapeHTML(u.machine_id || '');
+    const safeKey = escapeHTML(u.activation_key || '');
+    
+    const createdBy = (u.created_by && (u.created_by.username || u.created_by.role))
+      ? `${escapeHTML(u.created_by.username || '')}${u.created_by.role ? ' ('+escapeHTML(u.created_by.role)+')' : ''}` : '';
+    const assigned = (u.assigned_subadmins || []).map(escapeHTML).join(', ');
+
+    if(u.expiry_date){
+      const exp = new Date(u.expiry_date);
+      const daysLeft = Math.ceil((exp - today) / 86400000);
+      if(daysLeft < 0) tr.className = 'row-exp-expired';
+      else if(daysLeft < 7) tr.className = 'row-exp-critical';
+      else if(daysLeft < 30) tr.className = 'row-exp-soon';
+    }
+
+    const toggleBtn = MY_PERMS.has('TOGGLE_USER')
+      ? `<button class="btn btn-sm ${u.status==='ENABLED'?'btn-outline-warning':'btn-outline-success'} py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="toggleUser('${jsUser}')">${u.status==='ENABLED'?'Disable':'Enable'}</button>` : '';
+    const renewBtn = MY_PERMS.has('RENEW_LICENSE')
+      ? `<button class="btn btn-sm btn-outline-info py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="openRenewModal('${jsUser}')">Renew</button>` : '';
+    const expiryBtn = MY_PERMS.has('UPDATE_EXPIRY')
+      ? `<button class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="editExpiry('${jsUser}', '${escapeJS(u.expiry_date)}')">Edit Expiry</button>` : '';
+    const clearBtn = MY_PERMS.has('CLEAR_MACHINE')
+      ? `<button class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="clearMachine('${jsUser}')">Clear</button>` : '';
+    const botsBtn = (IS_SUPER || MY_PERMS.has('MANAGE_BOT_BLOCKS'))
+      ? `<button class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="manageBots('${jsUser}')">Bots</button>` : '';
+    const deleteBtn = MY_PERMS.has('DELETE_USER')
+      ? `<button class="btn btn-sm btn-outline-danger py-1 px-2" style="font-size:0.75rem; border-radius:6px;" onclick="deleteUser('${jsUser}')">Delete</button>` : '';
+
+    const tagsDisplay = (u.tags || '').split(',').filter(Boolean).map(t =>
+      `<span class="badge bg-secondary me-1">${escapeHTML(t.trim())}</span>`).join('');
+    const tagsEditBtn = MY_PERMS.has('UPDATE_TAGS')
+      ? `<button class="btn btn-sm btn-outline-light py-0 px-1 act-edit-tags" data-username="${safeUser}" data-tags="${safeTags}" title="Edit tags">🏷</button>` : '';
+    const tagsCell = `<div style="min-width:60px">${tagsDisplay}${tagsEditBtn}</div>`;
+
+    const canSeeLogins = IS_SUPER || window._showLoginsCol;
+
+    // User Activity Summary: days ago + top bot
+    let _activityTooltip = 'Never logged in';
+    if(u.last_login){
+      try{
+        const _d = new Date(u.last_login.replace(' ','T'));
+        const _diff = Math.floor((Date.now() - _d.getTime()) / 86400000);
+        const _ago = _diff === 0 ? 'Today' : _diff === 1 ? 'Yesterday' : _diff + 'd ago';
+        _activityTooltip = `Last: ${u.last_login.substring(0,16)} (${_ago})`;
+      } catch(e){ _activityTooltip = u.last_login.substring(0,16); }
+    }
+    if(u.top_bot) _activityTooltip += ' | 🤖 ' + u.top_bot;
+
+    const loginCountBadge = !canSeeLogins ? '' :
+      IS_SUPER ? `<span class="badge bg-info text-dark" style="cursor:pointer" title="${_activityTooltip}" onclick="jumpToLoginHistory('${jsUser}')">${escapeHTML(u.login_count||0)}</span>`
+        : `<span class="badge bg-secondary" title="Login count">${escapeHTML(u.login_count||0)}</span>`;
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="user-checkbox" data-username="${safeUser}"></td>
+      <td>${idx}</td>
+      <td>${safeUser}</td>
+      ${IS_SUPER ? `<td>${createdBy}</td>` : ''}
+      <td>${safeKey}</td>
+      <td><span class="badge ${u.status==='ENABLED'?'bg-success':'bg-warning text-dark'}">${u.status}</span></td>
+      <td>${safeMachine}</td>
+      <td>${escapeHTML(u.expiry_date)}${
+        (u.days_left !== null && u.days_left !== undefined)
+          ? (u.days_left < 0 ? '<span class="badge bg-danger ms-1 py-0" style="font-size:.65rem">EXPIRED</span>'
+            : u.days_left <= 3 ? '<span class="badge bg-danger ms-1 py-0" style="font-size:.65rem">⚠️ '+u.days_left+'d</span>'
+            : u.days_left <= 7 ? '<span class="badge bg-warning text-dark ms-1 py-0" style="font-size:.65rem">⚠️ '+u.days_left+'d</span>'
+            : '') : ''
+      }</td>
+      <td>${escapeHTML(u.days_left)}</td>
+      ${canSeeLogins ? `<td>${loginCountBadge}</td>` : ''}
+      <td><div class="d-flex flex-wrap gap-1" style="max-width: 280px;">${toggleBtn}${renewBtn}${expiryBtn}${clearBtn}${botsBtn}${deleteBtn}</div></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+
+// ===== Event delegation for table action buttons =====
+// Handles act-edit-tags, act-edit-note, act-note-history buttons
+// (avoids inline onclick with complex quote-escaping inside template literals)
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  if(btn.classList.contains('act-edit-tags')){
+    const username = btn.dataset.username;
+    const currentTags = btn.dataset.tags || '';
+    editTags(username, currentTags);
+  } else if(btn.classList.contains('act-edit-note')){
+    const username = btn.dataset.username;
+    const currentNote = btn.dataset.note || '';
+    editNote(username, currentNote);
+  } else if(btn.classList.contains('act-note-history')){
+    showNoteHistory(btn.dataset.username);
+  }
+});
+
+function renderPagination(totalPages, current){
+  const ul = document.getElementById('pagination');
+  ul.innerHTML = '';
+  if(totalPages <= 1) return;
+
+  // First
+  const liFirst = document.createElement('li');
+  liFirst.className = 'page-item' + (current===1?' disabled':'');
+  liFirst.innerHTML = '<a class="page-link" href="#" onclick="loadUsers(1);return false;">&#171;</a>';
+  ul.appendChild(liFirst);
+
+  // Prev
+  const liPrev = document.createElement('li');
+  liPrev.className = 'page-item' + (current<=1?' disabled':'');
+  liPrev.innerHTML = `<a class="page-link" href="#" onclick="loadUsers(${Math.max(1,current-1)});return false;">&#8249;</a>`;
+  ul.appendChild(liPrev);
+
+  // Pages (show window of 5)
+  const start = Math.max(1, current-2), end = Math.min(totalPages, start+4);
+  for(let i=start;i<=end;i++){
+    const li = document.createElement('li');
+    li.className = 'page-item' + (i===current?' active':'');
+    li.innerHTML = `<a class="page-link" href="#" onclick="loadUsers(${i});return false;">${i}</a>`;
+    ul.appendChild(li);
+  }
+
+  // Next
+  const liNext = document.createElement('li');
+  liNext.className = 'page-item' + (current>=totalPages?' disabled':'');
+  liNext.innerHTML = `<a class="page-link" href="#" onclick="loadUsers(${Math.min(totalPages,current+1)});return false;">&#8250;</a>`;
+  ul.appendChild(liNext);
+
+  // Last
+  const liLast = document.createElement('li');
+  liLast.className = 'page-item' + (current===totalPages?' disabled':'');
+  liLast.innerHTML = `<a class="page-link" href="#" onclick="loadUsers(${totalPages});return false;">&#187;</a>`;
+  ul.appendChild(liLast);
+
+  // Jump input
+  const liJump = document.createElement('li');
+  liJump.className = 'page-item ms-2';
+  liJump.innerHTML = `<span class="page-link d-flex align-items-center gap-1 py-0" style="background:transparent;border:none">
+    <input id="pageJumpInput" type="number" min="1" max="${totalPages}" value="${current}" style="width:48px;padding:2px 4px;background:#0f1724;border:1px solid #213041;color:#e6eef6;border-radius:4px;font-size:.8rem" onkeydown="if(event.key==='Enter'){loadUsers(Math.max(1,Math.min(${totalPages},parseInt(this.value)||1)));return false;}">
+    <span class="text-secondary small">/ ${totalPages}</span>
+  </span>`;
+  ul.appendChild(liJump);
+}
+
+// ===== Load bots for Add User form =====
+async function loadAddUserBots(){
+  const section = document.getElementById('addUserBotSection');
+  const list = document.getElementById('addUserBotList');
+  if(!section || !list) return;
+  list.innerHTML = '<span class="text-secondary small">Loading bots...</span>';
+  section.style.display = '';
+
+  // Reuse /api/admin/user_bots with a dummy call or use bots endpoint
+  // For sub-admin we need to show only their allowed bots.
+  // Use the existing user_bots API trick: pass a placeholder user
+  // Instead, directly call a lightweight endpoint.
+  try{
+    // SUPER_ADMIN: shows all bots. SUB_ADMIN: shows only allowed bots.
+    const endpoint = IS_SUPER ? '/api/admin/bots' : '/api/admin/my_available_bots';
+    const res = await apiFetch(endpoint);
+    const bots = (res.status === 'ok') ? (res.data || []) : [];
+    list.innerHTML = '';
+    if(bots.length === 0){
+      list.innerHTML = '<span class="text-secondary small">No bots configured yet.</span>';
+      return;
+    }
+    bots.forEach(b => {
+      const appName = b.app_name || b;
+      const ver = b.required_version || '';
+      const isActive = b.is_active !== undefined ? b.is_active : 1;
+      const div = document.createElement('div');
+      div.className = 'd-flex align-items-center gap-1 border border-secondary rounded px-2 py-1';
+      div.style.background = '#0f1724';
+      div.innerHTML = `
+        <input class="form-check-input mt-0 add-user-bot-cb" type="checkbox" id="aubcb_${CSS.escape(appName)}" value="${appName}" checked>
+        <label class="form-check-label small mb-0" for="aubcb_${CSS.escape(appName)}">
+          ${appName}${ver ? ` <span class="text-secondary">v${ver}</span>` : ''}
+          ${isActive ? '<span class="badge bg-success ms-1" style="font-size:0.6rem">Active</span>' : '<span class="badge bg-secondary ms-1" style="font-size:0.6rem">Off</span>'}
+        </label>`;
+      list.appendChild(div);
+    });
+  }catch(e){
+    list.innerHTML = '<span class="text-danger small">Failed to load bots.</span>';
+  }
+}
+
+// All / None buttons for bot checkboxes
+const _aubSelectAll = document.getElementById('addUserBotSelectAll');
+if(_aubSelectAll){ _aubSelectAll.addEventListener('click', ()=>{ document.querySelectorAll('.add-user-bot-cb').forEach(c=>c.checked=true); }); }
+const _aubClearAll = document.getElementById('addUserBotClearAll');
+if(_aubClearAll){ _aubClearAll.addEventListener('click', ()=>{ document.querySelectorAll('.add-user-bot-cb').forEach(c=>c.checked=false); }); }
+
+// ===== Open Add User Modal =====
+function openAddUserModal(){
+  const modalEl = document.getElementById('addUserModal');
+  if(!modalEl) return;
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  loadAddUserBots();
+  // Focus username after modal opens
+  modalEl.addEventListener('shown.bs.modal', ()=>{
+    const inp = modalEl.querySelector('input[name="username"]');
+    if(inp) inp.focus();
+  }, {once: true});
+}
+window.openAddUserModal = openAddUserModal;
+
+// Add User Submit button (inside modal)
+const _addUserSubmitBtnEl = document.getElementById('addUserSubmitBtn');
+if(_addUserSubmitBtnEl){
+  _addUserSubmitBtnEl.addEventListener('click', async ()=>{
+    const form = document.getElementById('addForm');
+    if(!form.checkValidity()){ form.reportValidity(); return; }
+    const fd = new FormData(form);
+    const body = Object.fromEntries(fd.entries());
+    // Auto-set password and activation_key = username
+    const uname = (body.username || '').trim();
+    body.password = uname;
+    body.activation_key = uname;
+    // Collect bot selection
+    const allCbs = [...document.querySelectorAll('.add-user-bot-cb')];
+    const blockedBots = allCbs.filter(c=>!c.checked).map(c=>c.value);
+    if(allCbs.length > 0) body.blocked_bots = blockedBots;
+    _addUserSubmitBtnEl.disabled = true;
+    _addUserSubmitBtnEl.textContent = 'Adding...';
+    const res = await apiFetch('/api/add_user', 'POST', body);
+    _addUserSubmitBtnEl.disabled = false;
+    _addUserSubmitBtnEl.textContent = '➕ Add User';
+    if(res.status === 'ok'){
+      bootstrap.Modal.getInstance(document.getElementById('addUserModal'))?.hide();
+      form.reset();
+      document.querySelectorAll('.add-user-bot-cb').forEach(c=>c.checked=true);
+      await loadUsers(currentPage);
+      await loadStats();
+    }
+    toast(res.message || JSON.stringify(res));
+  });
+}
+
+const assignUsernameInput = document.getElementById('assignUsernameInput');
+if(assignUsernameInput){
+  assignUsernameInput.addEventListener('input', (e)=> queueUserSuggest(e.target.value));
+}
+const unassignUsernameInput = document.getElementById('unassignUsernameInput');
+if(unassignUsernameInput){
+  unassignUsernameInput.addEventListener('input', (e)=> queueUserSuggest(e.target.value));
+}
+const subadminUsersSelect = document.getElementById('subadminUsersSelect');
+if(subadminUsersSelect){
+  subadminUsersSelect.addEventListener('change', ()=> loadSubadminUsers());
+}
+const subadminUsersRefreshBtn = document.getElementById('subadminUsersRefreshBtn');
+if(subadminUsersRefreshBtn){
+  subadminUsersRefreshBtn.addEventListener('click', ()=> loadSubadminUsers());
+}
+
+document.getElementById('searchInput').addEventListener('input', ()=> loadUsers(1));
+document.getElementById('perPage').addEventListener('change', ()=> loadUsers(1));
+const _tagFilterEl = document.getElementById('tagFilter');
+if(_tagFilterEl){ _tagFilterEl.addEventListener('input', ()=> loadUsers(1)); }
+document.getElementById('refreshBtn').addEventListener('click', ()=> loadUsers(currentPage));
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  await apiFetch('/logout', 'POST');
+  window.location.href = '/login';
+});
+document.getElementById('clearAllBtn').addEventListener('click', async ()=>{
+  if(!confirm('Clear all machine IDs?')) return;
+  const res = await apiFetch('/api/clear_all_machines', 'POST');
+  toast(res.message);
+  loadUsers(currentPage);
+});
+
+// Actions
+async function toggleUser(username){
+  const res = await apiFetch('/api/toggle_user', 'POST', {username});
+  toast(res.message); loadUsers(currentPage);
+}
+async function renewLicense(username, days){
+  const d = days || 30;
+  const res = await apiFetch('/api/renew_license', 'POST', {username, days: d});
+  toast(res.message); loadUsers(currentPage);
+}
+
+// Renew modal
+function openRenewModal(username){
+  document.getElementById('renewModalUser').textContent = username;
+  const modal = new bootstrap.Modal(document.getElementById('renewModal'));
+  // preset buttons
+  document.querySelectorAll('.renew-preset-btn').forEach(btn => {
+    btn.onclick = async () => {
+      modal.hide();
+      await renewLicense(username, parseInt(btn.dataset.days));
+    };
+  });
+  // custom button
+  document.getElementById('renewCustomBtn').onclick = async () => {
+    const val = parseInt(document.getElementById('renewCustomDays').value);
+    if(!val || val < 1){ toast('Enter valid number of days'); return; }
+    modal.hide();
+    await renewLicense(username, val);
+  };
+  document.getElementById('renewCustomDays').value = '';
+  modal.show();
+}
+window.openRenewModal = openRenewModal;
+async function editExpiry(username, currentDate){
+  const newDate = prompt(`Enter new expiry date for ${username} (YYYY-MM-DD):`, currentDate);
+  if(!newDate) return;
+  const res = await apiFetch('/api/update_expiry', 'POST', {username, new_expiry: newDate});
+  toast(res.message);
+  loadUsers(currentPage);
+}
+async function editNote(username, currentNote){
+  const val = prompt(`Edit note for ${username}:`, currentNote);
+  if(val === null) return;
+  const res = await apiFetch('/api/update_note', 'POST', {username, note: val});
+  loadUsers(currentPage);
+}
+async function clearMachine(username){
+  if(!confirm('Clear machine for '+username+'?')) return;
+  const res = await apiFetch('/api/clear_machine', 'POST', {username});
+  toast(res.message); loadUsers(currentPage);
+}
+async function deleteUser(username){
+  if(!confirm('Delete '+username+'?')) return;
+  const res = await apiFetch('/api/delete_user', 'POST', {username});
+  toast(res.message); loadUsers(currentPage);
+}
+
+// ===== Tag editing =====
+async function editTags(username, currentTags){
+  const val = prompt(`Edit tags for ${username} (comma separated):`, currentTags);
+  if(val === null) return;
+  await apiFetch('/api/update_user_tags', 'POST', {username, tags: val});
+  loadUsers(currentPage);
+}
+
+// ===== Note History =====
+async function showNoteHistory(username){
+  document.getElementById('noteHistoryUsername').textContent = username;
+  const tbody = document.getElementById('noteHistoryTable');
+  tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+  new bootstrap.Modal(document.getElementById('noteHistoryModal')).show();
+  const res = await apiFetch(`/api/admin/note_history?username=${encodeURIComponent(username)}`);
+  if(res.status !== 'ok'){ tbody.innerHTML = '<tr><td colspan="3">Error</td></tr>'; return; }
+  const rows = res.data || [];
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="3" class="text-secondary">No history yet</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `<tr><td>${r.note || '-'}</td><td>${r.admin}</td><td>${(r.time||'').substring(0,16)}</td></tr>`).join('');
+}
+
+// ===== Bulk Select =====
+const selectAll = document.getElementById('selectAll');
+if(selectAll){
+  selectAll.addEventListener('change', ()=>{
+    document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = selectAll.checked);
+  });
+}
+
+function getSelectedUsernames(){
+  return [...document.querySelectorAll('.user-checkbox:checked')].map(cb => cb.dataset.username);
+}
+
+const bulkEnableBtn = document.getElementById('bulkEnableBtn');
+if(bulkEnableBtn){
+  bulkEnableBtn.addEventListener('click', async ()=>{
+    const usernames = getSelectedUsernames();
+    if(!usernames.length){ toast('No users selected'); return; }
+    if(!confirm(`Enable ${usernames.length} users?`)) return;
+    const res = await apiFetch('/api/bulk_action', 'POST', {usernames, action: 'enable'});
+    toast(res.message); loadUsers(currentPage);
+  });
+}
+const bulkDisableBtn = document.getElementById('bulkDisableBtn');
+if(bulkDisableBtn){
+  bulkDisableBtn.addEventListener('click', async ()=>{
+    const usernames = getSelectedUsernames();
+    if(!usernames.length){ toast('No users selected'); return; }
+    if(!confirm(`Disable ${usernames.length} users?`)) return;
+    const res = await apiFetch('/api/bulk_action', 'POST', {usernames, action: 'disable'});
+    toast(res.message); loadUsers(currentPage);
+  });
+}
+const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+if(bulkDeleteBtn){
+  bulkDeleteBtn.addEventListener('click', async ()=>{
+    const usernames = getSelectedUsernames();
+    if(!usernames.length){ toast('No users selected'); return; }
+    if(!confirm(`Delete ${usernames.length} users? This cannot be undone!`)) return;
+    const res = await apiFetch('/api/bulk_action', 'POST', {usernames, action: 'delete'});
+    toast(res.message); loadUsers(currentPage);
+  });
+}
+
+
+// ===== Bulk CSV Import =====
+const bulkImportBtn = document.getElementById('bulkImportBtn');
+if(bulkImportBtn){
+  bulkImportBtn.addEventListener('click', async ()=>{
+    let csv = document.getElementById('bulkCsvInput').value.trim();
+    if(!csv){ toast('Paste CSV first'); return; }
+    // Build separator chars at runtime using fromCharCode to avoid Python escape issues
+    const _LF = String.fromCharCode(10);
+    const _TAB = String.fromCharCode(9);
+    const _CR  = String.fromCharCode(13);
+    const _DATEREGEX = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    const _NUMREGEX  = new RegExp('^[0-9]+$');
+    // Normalize all line endings to LF and split into lines
+    const lines = csv.split(_CR).join('').split(_LF).map(l=>l.trim()).filter(Boolean);
+    // Skip header if present
+    let dataLines = lines[0].toLowerCase().indexOf('username') >= 0 ? lines.slice(1) : lines;
+    const normalized = dataLines.map(line => {
+      // Detect tab-separated vs comma-separated without regex literal
+      const hasTabs = line.indexOf(_TAB) >= 0;
+      const parts = hasTabs ? line.split(_TAB) : line.split(',');
+      const cols = parts.map(p=>p.trim()).filter(Boolean);
+      let username='', expiry='', key='';
+      for(const c of cols){
+        if(!username && c && !_NUMREGEX.test(c) && c.indexOf('-')<0 && c.length>1 && c!=='ENABLED' && c!=='DISABLED' && c!=='N/A') username=c;
+        else if(!expiry && _DATEREGEX.test(c)) expiry=c;
+        else if(!key && c.length>=8 && c!=='ENABLED' && c!=='DISABLED' && !_NUMREGEX.test(c) && username && c!==username) key=c;
+      }
+      return username ? (username+','+expiry+','+username) : null;
+    }).filter(Boolean).join(_LF);
+    csv = normalized || csv;
+    const res = await apiFetch('/api/bulk_import', 'POST', {csv});
+    const resultDiv = document.getElementById('bulkImportResult');
+    if(res.status === 'ok'){
+      const ok = res.results.filter(r=>r.status==='ok').length;
+      const exists = res.results.filter(r=>r.status==='exists').length;
+      const errors = res.results.filter(r=>r.status==='error').length;
+      resultDiv.innerHTML = '<span class="text-success">Imported: '+ok+'</span> | <span class="text-warning">Exists: '+exists+'</span> | <span class="text-danger">Error: '+errors+'</span>';
+      loadUsers(1);
+    } else {
+      resultDiv.innerHTML = '<span class="text-danger">'+res.message+'</span>';
+    }
+  });
+}
+
+// ===== Dark/Light Mode =====
+(function(){
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : '');
+  if(saved !== 'light') document.documentElement.removeAttribute('data-theme');
+  const toggleEl = document.getElementById('darkModeToggle');
+  if(toggleEl){
+    toggleEl.textContent = saved === 'light' ? '🌙' : '☀️';
+    toggleEl.addEventListener('click', ()=>{
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      if(isLight){
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('theme','dark');
+        toggleEl.textContent = '☀️';
+      } else {
+        document.documentElement.setAttribute('data-theme','light');
+        localStorage.setItem('theme','light');
+        toggleEl.textContent = '🌙';
+      }
+    });
+  }
+})();
+
+// ===== Idle Session Timeout =====
+(function setupIdleTimeout(){
+  const IDLE_LIMIT = {{ session_lifetime }} * 60 * 1000;
+  let idleTimer;
+  function resetTimer(){
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(async ()=>{
+      await apiFetch('/logout','POST').catch(()=>{});
+      toast('You have been logged out due to inactivity.');
+      window.location.href = '/login';
+    }, IDLE_LIMIT);
+  }
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(e => document.addEventListener(e, resetTimer, true));
+  resetTimer();
+})()
+
+// ===== Maintenance Mode =====
+async function loadMaintenanceStatus(){
+  const badge = document.getElementById('maintenanceBadge');
+  const msgEl = document.getElementById('maintenanceMsg');
+  if(!badge) return;
+  const res = await apiFetch('/api/admin/maintenance');
+  if(res.status === 'ok'){
+    const on = res.data.enabled;
+    badge.textContent = on ? '🔴 ON' : '🟢 OFF';
+    badge.className = on ? 'badge bg-danger' : 'badge bg-success';
+    if(msgEl && res.data.message) msgEl.value = res.data.message;
+  }
+}
+const maintenanceEnableBtn = document.getElementById('maintenanceEnableBtn');
+if(maintenanceEnableBtn){
+  maintenanceEnableBtn.addEventListener('click', async ()=>{
+    const msg = document.getElementById('maintenanceMsg')?.value || '';
+    if(!confirm('Enable maintenance mode? All bots will be blocked.')) return;
+    const res = await apiFetch('/api/admin/maintenance','POST',{enabled:1,message:msg});
+    toast(res.message); loadMaintenanceStatus();
+  });
+}
+const maintenanceDisableBtn = document.getElementById('maintenanceDisableBtn');
+if(maintenanceDisableBtn){
+  maintenanceDisableBtn.addEventListener('click', async ()=>{
+    const res = await apiFetch('/api/admin/maintenance','POST',{enabled:0,message:''});
+    toast(res.message); loadMaintenanceStatus();
+  });
+}
+if(IS_SUPER){ loadMaintenanceStatus(); }
+
+// ===== Stats Chart =====
+let _statsChart = null;
+async function loadStatsChart(){
+  const canvas = document.getElementById('statsChartCanvas');
+  if(!canvas || !window.Chart) return;
+  const res = await apiFetch('/api/admin/stats_chart');
+  if(res.status !== 'ok') return;
+  const labels = res.data.map(d => d.month);
+  const newU = res.data.map(d => d.new_users);
+  const expU = res.data.map(d => d.expired_users);
+  if(_statsChart) _statsChart.destroy();
+  _statsChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label: 'New Users', data: newU, backgroundColor: 'rgba(46,204,113,0.7)'},
+        {label: 'Expired Users', data: expU, backgroundColor: 'rgba(231,76,60,0.7)'}
+      ]
+    },
+    options: {responsive:true, plugins:{legend:{labels:{color:'#e6eef6'}}}}
+  });
+}
+if(IS_SUPER){ loadStatsChart(); }
+
+// ===== Expiry Calendar =====
+async function loadExpiryCalendar(){
+  const container = document.getElementById('expiryCalendar');
+  if(!container) return;
+  const res = await apiFetch('/api/admin/expiry_calendar');
+  if(res.status !== 'ok') return;
+  container.innerHTML = '';
+  const today = new Date().toISOString().slice(0,10);
+  for(const d of res.data){
+    const isToday = d.date === today;
+    const color = d.count === 0 ? '#213041' : d.count < 3 ? '#856404' : '#842029';
+    const cell = document.createElement('div');
+    cell.style.cssText = `background:${color};border-radius:4px;padding:4px 8px;text-align:center;min-width:70px;border:${isToday?'2px solid #0dcaf0':'1px solid transparent'};cursor:pointer;transition:filter 0.15s,transform 0.1s`;
+    cell.title = `Click to see users expiring on ${d.date}`;
+    cell.setAttribute('data-expiry-date', d.date);
+    cell.innerHTML = `<div style="font-size:0.65rem;opacity:.7">${d.date.slice(5)}</div><div style="font-weight:bold">${d.count}</div>`;
+    // Hover effect
+    cell.addEventListener('mouseenter', ()=>{ cell.style.filter='brightness(1.3)'; cell.style.transform='scale(1.05)'; });
+    cell.addEventListener('mouseleave', ()=>{ cell.style.filter=''; cell.style.transform=''; });
+    // Click: show users expiring on this date
+    cell.addEventListener('click', ()=> showExpiryUsers(d.date, d.count));
+    container.appendChild(cell);
+  }
+}
+if(IS_SUPER){ loadExpiryCalendar(); }
+
+// ===== Expiry Date Users Modal =====
+async function showExpiryUsers(date, count){
+  // Set header date
+  document.getElementById('expiryUsersDate').textContent = date;
+  document.getElementById('expiryUserCount').textContent = count > 0 ? `${count} user(s) expiring` : 'No users expiring';
+
+  const tbody = document.getElementById('expiryUsersTable');
+  const emptyMsg = document.getElementById('expiryUsersEmpty');
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-2">Loading...</td></tr>';
+  emptyMsg.classList.add('d-none');
+
+  // Open modal
+  new bootstrap.Modal(document.getElementById('expiryUsersModal')).show();
+
+  // Fetch users
+  const res = await apiFetch(`/api/admin/users_by_expiry?date=${encodeURIComponent(date)}`);
+  tbody.innerHTML = '';
+  if(res.status !== 'ok' || !res.data || res.data.length === 0){
+    emptyMsg.classList.remove('d-none');
+    return;
+  }
+
+  const today = new Date();
+  res.data.forEach((u, i) => {
+    const expDate = new Date(u.expiry_date);
+    const daysLeft = Math.round((expDate - today) / 86400000);
+    const daysClass = daysLeft <= 0 ? 'text-danger' : daysLeft <= 7 ? 'text-warning' : 'text-success';
+    const statusBadge = u.status === 'ENABLED'
+      ? '<span class="badge bg-success">ENABLED</span>'
+      : '<span class="badge bg-danger">DISABLED</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td><strong>${u.username}</strong></td>
+      <td><code style="font-size:0.78rem">${u.activation_key || '-'}</code></td>
+      <td>${statusBadge}</td>
+      <td><code style="font-size:0.78rem">${u.machine_id || '-'}</code></td>
+      <td>${u.tags ? `<span class="badge bg-secondary">${u.tags}</span>` : '-'}</td>
+      <td class="${daysClass} fw-bold">${daysLeft <= 0 ? 'Expired' : daysLeft + 'd'}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('expiryUserCount').textContent = `${res.data.length} user(s) expiring on ${date}`;
+}
+
+// ===== Sub-Admin Report =====
+async function loadSubadminReport(){
+  const tbody = document.getElementById('subadminReportTable');
+  if(!tbody) return;
+  const res = await apiFetch('/api/admin/subadmin_report');
+  if(res.status !== 'ok') return;
+  const rows = res.data || [];
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8" class="text-secondary text-center">No activity yet</td></tr>'; return; }
+  const acts = (row, key) => row.actions[key] || 0;
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.username}</td><td>${r.total}</td>
+      <td>${acts(r,'ADD_USER')}</td><td>${acts(r,'DELETE_USER')}</td>
+      <td>${acts(r,'TOGGLE_USER')}</td><td>${acts(r,'RENEW_LICENSE')}</td>
+      <td>${acts(r,'UPDATE_EXPIRY')}</td>
+      <td>${(acts(r,'CLEAR_MACHINE')+acts(r,'CLEAR_ALL_MACHINES'))}</td>
+    </tr>`).join('');
+}
+if(IS_SUPER){ loadSubadminReport(); }
+
+async function loadSubadmins(){
+  const tbody = document.getElementById('subadminTable');
+  if(!tbody) return;
+  try{
+    const res = await apiFetch('/api/admin/subadmins');
+    if(res.status !== 'ok'){
+      tbody.innerHTML = `<tr><td colspan="9">${res.message || 'Failed to load sub-admins'}</td></tr>`;
+      return;
+    }
+    const rows = res.data || [];
+    tbody.innerHTML = '';
+
+    // populate dropdowns
+    populateSubadminSelects(rows);
+
+    for(const a of rows){
+      // Store permissions in global map for modal use (avoids JSON-in-onclick double-quote conflicts)
+      _subadminPermsMap[a.username] = a.permissions || [];
+
+      const tr = document.createElement('tr');
+      const activeBadge = a.is_active ? '<span class="badge bg-success">YES</span>' : '<span class="badge bg-secondary">NO</span>';
+      const toggleBtn = `<button class="btn btn-sm ${a.is_active?'btn-warning':'btn-success'} me-1" onclick="toggleSubadmin('${a.username}', ${a.is_active?0:1})">${a.is_active?'Disable':'Enable'}</button>`;
+      const quotaBtn = `<button class="btn btn-sm btn-premium btn-cyan text-dark me-1" onclick="promptQuota('${a.username}', ${a.max_users})">Quota</button>`;
+      const maxExpiryBtn = `<button class="btn btn-sm btn-premium btn-yellow text-dark me-1" onclick="promptMaxExpiry('${a.username}', ${a.max_expiry_days ?? 0})">Max Days</button>`;
+      const permsBtn = `<button class="btn btn-sm btn-outline-info me-1" onclick="openPermsModal('${a.username}')">Perms</button>`;
+      const botsBtn  = `<button class="btn btn-sm btn-premium btn-yellow text-dark me-1" onclick="openBotsModal('${a.username}')">🤖 Bots</button>`;
+      const viewBtn  = `<button class="btn btn-sm btn-premium btn-secondary me-1" onclick="viewAssignedUsers('${a.username}')">Users</button>`;
+      const profileBtn = `<button class="btn btn-sm btn-premium btn-cyan me-1" onclick="openSubadminProfile('${a.username}')">👤 Profile</button>`;
+      const delBtn   = `<button class="btn btn-sm btn-premium btn-red" onclick="deleteSubadmin('${a.username}')">Delete</button>`;
+      const maxDaysLabel = (a.max_expiry_days > 0) ? `${a.max_expiry_days}d` : '<span class="text-secondary">∞</span>';
+
+// Password: click to show/hide
+      const pwText = a.plain_password || '';
+      const pwCell = pwText
+        ? `<span class="sa-pw-toggle badge bg-secondary" style="cursor:pointer;user-select:none;letter-spacing:2px" data-pw="${escapeHTML(pwText)}" data-shown="0" onclick="var s=this.getAttribute('data-shown')=='1';this.textContent=s?'\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf':this.getAttribute('data-pw');this.setAttribute('data-shown',s?'0':'1');this.className='sa-pw-toggle badge '+(s?'bg-secondary':'bg-warning text-dark')" title="Click to reveal">●●●●●●</span>`
+        : `<span class="text-muted small">-</span>`;
+
+      tr.innerHTML = `
+        <td>${a.username}</td>
+        <td>${a.max_users}</td>
+        <td>${maxDaysLabel}</td>
+        <td>${pwCell}</td>
+        <td>${a.assigned_count}</td>
+        <td>${a.created_count ?? 0}</td>
+        <td>${activeBadge}</td>
+        <td>${a.created_at || ''}</td>
+        <td>${toggleBtn}${quotaBtn}${maxExpiryBtn}${permsBtn}${botsBtn}${viewBtn}${profileBtn}${delBtn}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    // keep assigned-users panel updated
+    loadSubadminUsers();
+  }catch(e){ console.error(e); }
+}
+
+function togglePw(username){
+  const el = document.getElementById('pw_'+username);
+  if(!el) return;
+  el.style.display = el.style.display === 'none' ? 'inline' : 'none';
+}
+
+// Permissions modal
+const ALL_PERM_LABELS = {
+  // User management
+  ADD_USER:          'Add User',
+  TOGGLE_USER:       'Enable / Disable User',
+  DELETE_USER:       'Delete User',
+  RENEW_LICENSE:     'Renew License (+30 days)',
+  UPDATE_EXPIRY:     'Edit Expiry Date',
+  CLEAR_MACHINE:     'Clear Single Machine ID',
+  CLEAR_ALL_MACHINES:'Clear All Machine IDs',
+  BULK_IMPORT:       'Bulk CSV Import',
+  UPDATE_TAGS:       'Update User Tags',
+  EDIT_NOTE:         'Edit User Note',
+  VIEW_NOTE_HISTORY: 'View Note History',
+  DOWNLOAD_USERS:    'Download Users (CSV/Excel)',
+  // Section access
+  VIEW_ANALYTICS:         'View Analytics & Charts',
+  VIEW_AUDIT_LOG:         'View Audit Log',
+  VIEW_LOGIN_HISTORY:     'View Login History',
+  VIEW_ACTIVITY_SUMMARY:  'User Activity Summary',
+  // Bot management
+  MANAGE_BOT_BLOCKS: 'Manage Per-User Bot Blocks',
+  // Store
+  VIEW_STORE:        'Access Customer Store',
+  // My Account
+  EDIT_PROFILE:      'Edit Profile Information',
+};
+
+let _permsTarget = null;
+function openPermsModal(username){
+  _permsTarget = username;
+  // Pull from global map (avoids JSON-in-onclick HTML escaping issues)
+  const currentPerms = _subadminPermsMap[username] || [];
+  document.getElementById('permsModalUsername').textContent = username;
+  const box = document.getElementById('permsCheckboxes');
+  box.innerHTML = '';
+  const currentSet = new Set(currentPerms);
+
+  // Group permissions by category for cleaner layout
+  const PERM_GROUPS = [
+    {
+      label: '👤 User Management',
+      keys: ['ADD_USER','TOGGLE_USER','DELETE_USER','RENEW_LICENSE','UPDATE_EXPIRY',
+             'CLEAR_MACHINE','CLEAR_ALL_MACHINES','BULK_IMPORT']
+    },
+    {
+      label: '📝 Data & Notes',
+      keys: ['UPDATE_TAGS','EDIT_NOTE','VIEW_NOTE_HISTORY','DOWNLOAD_USERS']
+    },
+    {
+      label: '📊 Section Access',
+      keys: ['VIEW_ANALYTICS','VIEW_AUDIT_LOG','VIEW_LOGIN_HISTORY','VIEW_ACTIVITY_SUMMARY']
+    },
+    {
+      label: '🤖 Bot Management',
+      keys: ['MANAGE_BOT_BLOCKS']
+    },
+    {
+      label: '🛒 Store',
+      keys: ['VIEW_STORE']
+    },
+    {
+      label: '👤 My Account',
+      keys: ['EDIT_PROFILE']
+    },
+  ];
+
+  PERM_GROUPS.forEach(group => {
+    // Category header
+    const header = document.createElement('div');
+    header.className = 'col-12 mt-2 mb-1';
+    header.innerHTML = `<small class="text-info fw-bold border-bottom border-secondary pb-1 d-block">${group.label}</small>`;
+    box.appendChild(header);
+
+    // Checkboxes in 3-column grid
+    group.keys.forEach(key => {
+      const label = ALL_PERM_LABELS[key];
+      if(!label) return;
+      const checked = currentSet.has(key) ? 'checked' : '';
+      const div = document.createElement('div');
+      div.className = 'col-4';
+      div.innerHTML = `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="perm_${key}" value="${key}" ${checked}>
+          <label class="form-check-label small" for="perm_${key}">${label}</label>
+        </div>`;
+      box.appendChild(div);
+    });
+  });
+  new bootstrap.Modal(document.getElementById('permsModal')).show();
+}
+
+const permsSaveBtn = document.getElementById('permsSaveBtn');
+if(permsSaveBtn){
+  permsSaveBtn.addEventListener('click', async ()=>{
+    if(!_permsTarget) return;
+    const checkboxes = document.querySelectorAll('#permsCheckboxes input[type=checkbox]');
+    const permissions = [...checkboxes].filter(c=>c.checked).map(c=>c.value);
+    const res = await apiFetch('/api/admin/update_subadmin_perms', 'POST', {username: _permsTarget, permissions});
+    toast(res.message || JSON.stringify(res));
+    if(res.status==='ok'){
+      bootstrap.Modal.getInstance(document.getElementById('permsModal'))?.hide();
+      await loadSubadmins();
+    }
+  });
+}
+
+// ===== Bot Access Modal =====
+let _botsTarget = null;
+
+async function openBotsModal(username){
+  _botsTarget = username;
+  document.getElementById('botsModalUsername').textContent = username;
+  document.getElementById('botsCheckboxes').innerHTML = '';
+  document.getElementById('botsModalLoading').style.display = '';
+  document.getElementById('botsModalHint').textContent = '';
+
+  new bootstrap.Modal(document.getElementById('botsModal')).show();
+
+  // Load all bots + this sub-admin's current allowed list in parallel
+  const [allBotsRes, assignedRes] = await Promise.all([
+    apiFetch('/api/admin/bots'),
+    apiFetch(`/api/admin/subadmin_bots?subadmin=${encodeURIComponent(username)}`)
+  ]);
+
+  document.getElementById('botsModalLoading').style.display = 'none';
+
+  if(allBotsRes.status !== 'ok'){ return; }
+
+  const allBots = allBotsRes.data || [];
+  const assignedSet = new Set((assignedRes.status === 'ok') ? (assignedRes.data || []) : []);
+
+  const box = document.getElementById('botsCheckboxes');
+  if(allBots.length === 0){
+    box.innerHTML = '<div class="col-12 text-secondary">No bots registered yet.</div>';
+    return;
+  }
+
+  allBots.forEach(bot => {
+    const checked = assignedSet.has(bot.app_name) ? 'checked' : '';
+    const activeBadge = bot.is_active
+      ? '<span class="badge bg-success ms-1">Active</span>'
+      : '<span class="badge bg-secondary ms-1">Disabled</span>';
+    const div = document.createElement('div');
+    div.className = 'col-12';
+    div.innerHTML = `
+      <div class="form-check border border-secondary rounded p-2">
+        <input class="form-check-input" type="checkbox" id="bot_${bot.app_name}" value="${bot.app_name}" ${checked}>
+        <label class="form-check-label" for="bot_${bot.app_name}">
+          <strong>${bot.app_name}</strong>${activeBadge}
+          <small class="text-secondary ms-2">v${bot.required_version}</small>
+        </label>
+      </div>`;
+    box.appendChild(div);
+  });
+
+  const hint = assignedSet.size === 0
+    ? 'Currently unrestricted — all bots allowed'
+    : `Currently restricted to ${assignedSet.size} bot(s)`;
+  document.getElementById('botsModalHint').textContent = hint;
+}
+
+const botsSaveBtn = document.getElementById('botsSaveBtn');
+if(botsSaveBtn){
+  botsSaveBtn.addEventListener('click', async ()=>{
+    if(!_botsTarget) return;
+    const checkboxes = document.querySelectorAll('#botsCheckboxes input[type=checkbox]');
+    const bots = [...checkboxes].filter(c=>c.checked).map(c=>c.value);
+    const res = await apiFetch('/api/admin/update_subadmin_bots', 'POST', {username: _botsTarget, bots});
+    toast(res.message || JSON.stringify(res));
+    if(res.status==='ok'){
+      bootstrap.Modal.getInstance(document.getElementById('botsModal'))?.hide();
+    }
+  });
+}
+
+const createForm = document.getElementById('csaForm');
+if(createForm){
+  createForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    body.max_users = parseInt(body.max_users || '10');
+    body.max_expiry_days = parseInt(body.max_expiry_days || '0');
+    // Collect selected permissions
+    const perms = [...document.querySelectorAll('.create-perm-cb:checked')].map(cb => cb.value);
+    body.permissions = perms;
+    const res = await apiFetch('/api/admin/create_subadmin', 'POST', body);
+    toast(res.message || JSON.stringify(res));
+    await loadSubadmins();
+    e.target.reset();
+    initCreatePermCheckboxes(); // reset checkboxes
+  });
+}
+
+const assignForm = document.getElementById('assignUserForm');
+if(assignForm){
+  assignForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    const res = await apiFetch('/api/admin/assign_user', 'POST', body);
+    toast(res.message || JSON.stringify(res));
+    await loadSubadmins();
+    e.target.reset();
+  });
+}
+
+const unassignForm = document.getElementById('unassignUserForm');
+if(unassignForm){
+  unassignForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    const res = await apiFetch('/api/admin/unassign_user', 'POST', body);
+    toast(res.message || JSON.stringify(res));
+    await loadSubadmins();
+    e.target.reset();
+  });
+}
+
+const genDeviceBtn = document.getElementById('generateDeviceLoginBtn');
+if(genDeviceBtn){
+  genDeviceBtn.addEventListener('click', async () => {
+    genDeviceBtn.disabled = true;
+    document.getElementById('deviceLoginSpinner').style.display = '';
+    document.getElementById('deviceCredentialsBox').style.display = 'none';
+
+    try {
+      const res = await apiFetch('/api/admin/create_device', 'POST', {});
+      if(res.status === 'ok'){
+        document.getElementById('cdServerUrl').value = window.location.origin;
+        document.getElementById('cdDeviceKey').value = res.device_key;
+        document.getElementById('cdUsername').value = res.username;
+        document.getElementById('cdPassword').value = res.password;
+        document.getElementById('deviceCredentialsBox').style.display = 'block';
+      } else {
+        toast(res.message || 'Failed to generate device login');
+      }
+    } catch(err) {
+      toast('Error: ' + err.message);
+    } finally {
+      genDeviceBtn.disabled = false;
+      document.getElementById('deviceLoginSpinner').style.display = 'none';
+      loadAdminDevices();
+    }
+  });
+}
+
+async function loadAdminDevices() {
+  const tbody = document.getElementById('connectedDevicesTable');
+  if(!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="text-secondary">Loading...</td></tr>';
+  
+  const res = await apiFetch('/api/admin/devices');
+  if(res.status !== 'ok') {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Failed to load: ${res.message}</td></tr>`;
+    return;
+  }
+  
+  const devices = res.data || [];
+  if(devices.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-secondary">No devices connected yet.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = '';
+  devices.forEach(d => {
+    let isOnline = false;
+    if(d.last_seen) {
+      // Check if last seen within 2 minutes (120 seconds)
+      const lastSeenTime = new Date(d.last_seen + "Z").getTime(); // Treat as UTC
+      const now = Date.now();
+      if(now - lastSeenTime < 120000) {
+         isOnline = true;
+      }
+    }
+    
+    const statusBadge = isOnline ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-danger">Offline</span>';
+    const lastSeenFormatted = d.last_seen ? new Date(d.last_seen + "Z").toLocaleString() : 'Never';
+    const createdFormatted = d.created_at ? new Date(d.created_at + "Z").toLocaleString() : 'Unknown';
+    
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="font-monospace text-warning">${escapeHTML(d.username)}</td>
+      <td>${statusBadge}</td>
+      <td class="small text-secondary">${lastSeenFormatted}</td>
+      <td class="fw-bold text-info">${d.sms_count}</td>
+      <td class="small text-secondary">${createdFormatted}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-info me-1" onclick="showDeviceDetails('${escapeJS(d.device_key)}', '${escapeJS(d.username)}', '${escapeJS(d.plain_password)}')">Full Details</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteAdminDevice('${escapeJS(d.username)}')">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function showDeviceDetails(deviceKey, username, password) {
+  const modalHtml = `
+    <div class="modal fade" id="deviceDetailsModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content bg-dark border-info">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title text-info">📱 Device Full Details</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label small text-secondary">Server URL</label>
+              <input class="form-control form-control-premium bg-dark text-light border-secondary font-monospace" value="${window.location.origin}" readonly>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small text-secondary">Device Key</label>
+              <input class="form-control form-control-premium bg-dark text-info border-secondary font-monospace" value="${escapeHTML(deviceKey)}" readonly>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small text-secondary">Device Username</label>
+              <input class="form-control form-control-premium bg-dark text-warning border-secondary font-monospace" value="${escapeHTML(username)}" readonly>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small text-secondary">Device Password</label>
+              <input class="form-control form-control-premium bg-dark text-warning border-secondary font-monospace" value="${escapeHTML(password)}" readonly>
+            </div>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="btn btn-premium btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const existingModal = document.getElementById('deviceDetailsModal');
+  if(existingModal) existingModal.remove();
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = new bootstrap.Modal(document.getElementById('deviceDetailsModal'));
+  modal.show();
+}
+
+async function deleteAdminDevice(username) {
+  if(!confirm(`Are you sure you want to permanently delete device '${username}'? It will be disconnected immediately.`)) return;
+  const res = await apiFetch('/api/admin/delete_device', 'POST', {username});
+  if(res.status === 'ok') {
+    loadAdminDevices();
+  } else {
+    toast('Error: ' + res.message);
+  }
+}
+
+// Initialize permissions in Create Sub Admin form
+function initCreatePermCheckboxes(){
+  const box = document.getElementById('createPermCheckboxes');
+  if(!box) return;
+  box.innerHTML = '';
+  const PERM_GROUPS = [
+    {label:'👤 User Mgmt', keys:['ADD_USER','TOGGLE_USER','DELETE_USER','RENEW_LICENSE','UPDATE_EXPIRY','CLEAR_MACHINE','CLEAR_ALL_MACHINES','BULK_IMPORT']},
+    {label:'📝 Data', keys:['UPDATE_TAGS','EDIT_NOTE','VIEW_NOTE_HISTORY','DOWNLOAD_USERS']},
+    {label:'📊 Views', keys:['VIEW_ANALYTICS','VIEW_AUDIT_LOG','VIEW_LOGIN_HISTORY','VIEW_ACTIVITY_SUMMARY']},
+    {label:'🤖 Bots', keys:['MANAGE_BOT_BLOCKS']},
+  ];
+  PERM_GROUPS.forEach(group => {
+    const hdr = document.createElement('div');
+    hdr.className = 'col-12';
+    hdr.innerHTML = `<small class="text-info" style="font-size:.7rem">${group.label}</small>`;
+    box.appendChild(hdr);
+    group.keys.forEach(key => {
+      const label = (ALL_PERM_LABELS[key] || key);
+      const div = document.createElement('div');
+      div.className = 'col-md-4 col-6';
+      div.innerHTML = `<div class="form-check mb-0"><input class="form-check-input create-perm-cb" type="checkbox" id="cp_${key}" value="${key}" checked><label class="form-check-label small" for="cp_${key}" style="font-size:.75rem">${label}</label></div>`;
+      box.appendChild(div);
+    });
+  });
+}
+function createFormSetAllPerms(val){
+  document.querySelectorAll('.create-perm-cb').forEach(cb => cb.checked = val);
+}
+if(document.getElementById('createPermCheckboxes')) initCreatePermCheckboxes();
+
+const subadminRefreshBtn = document.getElementById('subadminRefreshBtn');
+if(subadminRefreshBtn){
+  subadminRefreshBtn.addEventListener('click', ()=> loadSubadmins());
+}
+
+let _refreshCountdown = 30;
+function _updateRefreshBadge(){
+  const b = document.getElementById('refreshBadge');
+  if(b) b.textContent = '🔄 ' + _refreshCountdown + 's';
+}
+setInterval(()=>{
+  _refreshCountdown--;
+  if(_refreshCountdown <= 0) _refreshCountdown = 30;
+  _updateRefreshBadge();
+}, 1000);
+let autoRefresh = setInterval(()=>{ loadUsers(currentPage); _refreshCountdown=30; _updateRefreshBadge(); }, autoRefreshInterval);
+let autoRefreshSuper = null;
+if(IS_SUPER){
+  autoRefreshSuper = setInterval(()=>{
+    loadSubadmins();
+    loadSubadminUsers();
+  }, autoRefreshInterval);
+}
+// NOTE: loadUsers(1) and loadSubadmins() are called inside loadMyPerms() above
+// to ensure MY_PERMS is loaded before the first render
+
+
+// ===== Admin Login Attempts =====
+let _latData = [];
+async function loadLoginAttempts(){
+  const tbody = document.getElementById('loginAttemptsTable');
+  const meta = document.getElementById('latMeta');
+  if(!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Loading...</td></tr>';
+  try{
+    const res = await apiFetch('/api/admin/login_attempts');
+    if(res.status !== 'ok'){ tbody.innerHTML = '<tr><td colspan="5">Failed</td></tr>'; return; }
+    _latData = res.data || [];
+    if(meta) meta.textContent = 'Total: ' + _latData.length + ' attempts';
+    tbody.innerHTML = '';
+    _latData.forEach((r,i)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>'+(i+1)+'</td><td><code>'+escapeHTML(r.username||'-')+'</code></td><td>'+escapeHTML(r.ip||'-')+'</td>'
+        +'<td>'+(r.success ? '<span class="badge bg-success">SUCCESS</span>' : '<span class="badge bg-danger">FAILED</span>')+'</td>'
+        +'<td><small>'+escapeHTML(r.time||'-')+'</small></td>';
+      tbody.appendChild(tr);
+    });
+  }catch(e){ console.error(e); }
+}
+
+// ===== Create Sub Admin (Dedicated Section) =====
+let _csaBotsLoaded = false;
+let _csaPermInited = false;
+
+function initCSAForm(){
+  // Init permissions once
+  if(!_csaPermInited){
+    const box = document.getElementById('csaPermCheckboxes');
+    if(box){
+      box.innerHTML = '';
+      const _CSA_PERM_GROUPS = [
+        {label:'User Mgmt', keys:['ADD_USER','TOGGLE_USER','DELETE_USER','RENEW_LICENSE','UPDATE_EXPIRY','CLEAR_MACHINE','CLEAR_ALL_MACHINES','BULK_IMPORT']},
+        {label:'Data', keys:['UPDATE_TAGS','EDIT_NOTE','VIEW_NOTE_HISTORY','DOWNLOAD_USERS']},
+        {label:'Views', keys:['VIEW_ANALYTICS','VIEW_AUDIT_LOG','VIEW_LOGIN_HISTORY','VIEW_ACTIVITY_SUMMARY']},
+        {label:'Bots', keys:['MANAGE_BOT_BLOCKS']},
+        {label:'Account', keys:['EDIT_PROFILE']},
+      ];
+      _CSA_PERM_GROUPS.forEach(group => {
+        const hdr = document.createElement('div');
+        hdr.className = 'col-12';
+        hdr.innerHTML = `<small class="text-info" style="font-size:.7rem">${group.label}</small>`;
+        box.appendChild(hdr);
+        group.keys.forEach(key => {
+          const label = ALL_PERM_LABELS[key] || key;
+          const div = document.createElement('div');
+          div.className = 'col-md-4 col-6';
+          div.innerHTML = `<div class="form-check mb-0"><input class="form-check-input csa-perm-cb" type="checkbox" id="csaperm_${key}" value="${key}" checked><label class="form-check-label small" for="csaperm_${key}" style="font-size:.75rem">${label}</label></div>`;
+          box.appendChild(div);
+        });
+      });
+      _csaPermInited = true;
+    }
+  }
+  // Load bots once
+  if(!_csaBotsLoaded) loadCSABots();
+}
+
+async function loadCSABots(){
+  const loading = document.getElementById('csaBotsLoading');
+  const box = document.getElementById('csaBotCheckboxes');
+  if(!box) return;
+  try{
+    const res = await apiFetch('/api/admin/bots');
+    const bots = (res.status === 'ok') ? (res.data || []) : [];
+    loading.style.display = 'none';
+    box.style.display = '';
+    if(!bots.length){
+      box.innerHTML = '<div class="col-12 text-secondary small">No bots found</div>';
+    } else {
+      box.innerHTML = bots.map(b => {
+        const verBadge = b.required_version
+          ? '<small class="text-secondary ms-1" style="font-size:.7rem">v' + escapeHTML(b.required_version) + '</small>'
+          : '';
+        const offBadge = b.is_active
+          ? ''
+          : '<small class="badge bg-secondary ms-1" style="font-size:.6rem">Off</small>';
+        return '<div class="col-6 col-md-4"><div class="form-check form-check-sm">'
+          + '<input class="form-check-input csa-bot-cb" type="checkbox" id="csabot_' + escapeHTML(b.app_name) + '" value="' + escapeHTML(b.app_name) + '" checked>'
+          + '<label class="form-check-label small" for="csabot_' + escapeHTML(b.app_name) + '">'
+          + '🤖 ' + escapeHTML(b.app_name) + verBadge + offBadge
+          + '</label></div></div>';
+      }).join('');
+    }
+    _csaBotsLoaded = true;
+  }catch(e){ if(loading) loading.textContent = 'Failed to load bots'; }
+}
+
+function csaSetAllPerms(val){
+  document.querySelectorAll('.csa-perm-cb').forEach(cb => cb.checked = val);
+}
+function csaSetAllBots(val){
+  document.querySelectorAll('.csa-bot-cb').forEach(cb => cb.checked = val);
+}
+
+const csaForm = document.getElementById('csaForm');
+if(csaForm){
+  csaForm.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const msg = document.getElementById('csaMsg');
+    
+    const pw = document.getElementById('csaPassword').value;
+    const confirmPw = document.getElementById('csaConfirmPassword').value;
+    if(pw !== confirmPw){
+        msg.textContent = '❌ Passwords do not match';
+        msg.className = 'small text-danger';
+        return;
+    }
+    
+    msg.textContent = '⏳ Creating...'; msg.className = 'small text-secondary';
+    const perms = [...document.querySelectorAll('.csa-perm-cb:checked')].map(cb => cb.value);
+    const allowedBots = [...document.querySelectorAll('.csa-bot-cb:checked')].map(cb => cb.value);
+    const body = {
+      full_name: document.getElementById('csaFullName').value.trim(),
+      email: document.getElementById('csaEmail').value.trim(),
+      username: document.getElementById('csaUsername').value.trim(),
+      password: pw,
+      max_users: parseInt(document.getElementById('csaMaxUsers').value) || 10,
+      max_expiry_days: parseInt(document.getElementById('csaMaxDays').value) || 0,
+      permissions: perms,
+      allowed_bots: allowedBots,
+    };
+    try{
+      const res = await apiFetch('/api/admin/create_subadmin', 'POST', body);
+      if(res.status === 'ok'){
+        msg.textContent = '✅ ' + (res.message || 'Sub Admin created!');
+        msg.className = 'small text-success';
+        csaForm.reset();
+        _csaPermInited = false; _csaBotsLoaded = false;
+        initCSAForm();
+        loadSubadmins();
+      } else {
+        msg.textContent = '❌ ' + (res.message || 'Failed');
+        msg.className = 'small text-danger';
+      }
+    }catch(err){
+      msg.textContent = '❌ Error: ' + err;
+      msg.className = 'small text-danger';
+    }
+  });
+}
+
+
+// ===== User Activity Summary =====
+let _activityData = [];
+async function loadActivitySummary(){
+  const tbody = document.getElementById('activitySummaryBody');
+  const meta  = document.getElementById('activityMeta');
+  if(!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center py-2"><div class="spinner-border spinner-border-sm text-info me-1"></div>Loading...</td></tr>';
+  try{
+    const res = await apiFetch('/api/admin/activity_summary');
+    if(res.status !== 'ok'){ tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading data</td></tr>'; return; }
+    _activityData = res.data || [];
+    if(meta) meta.textContent = _activityData.length + ' users';
+    // Render top 10
+    const top10 = res.top10_30d || [];
+    const top10Container = document.getElementById('actTop10Container');
+    const top10Cards = document.getElementById('actTop10Cards');
+    if(top10Container && top10Cards){
+      if(top10.length > 0){
+        top10Container.style.display = '';
+        const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+        top10Cards.innerHTML = top10.map((u,i) => `
+          <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+            <div class="premium-card bg-dark border-warning p-2 text-center" style="border-radius:10px">
+              <div style="font-size:1.4rem">${medals[i]||''}</div>
+              <div class="fw-bold small text-warning">${escapeHTML(u.username)}</div>
+              <div><span class="badge bg-info text-dark">${u.count} logins</span></div>
+              <div class="text-muted" style="font-size:0.7rem">${u.top_bot ? '🤖 '+escapeHTML(u.top_bot) : ''}</div>
+            </div>
+          </div>`).join('');
+      } else {
+        top10Container.style.display = 'none';
+      }
+    }
+    _renderActivityTable(_activityData);
+  }catch(e){ console.error(e); }
+}
+function _renderActivityTable(rows){
+  const tbody = document.getElementById('activitySummaryBody');
+  if(!tbody) return;
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary">No data</td></tr>'; return; }
+  tbody.innerHTML = rows.map((u,i) => {
+    const daysAgo = u.days_ago === null ? '' : u.days_ago === 0 ? 'Today' : u.days_ago === 1 ? 'Yesterday' : u.days_ago + 'd ago';
+    const daysBadge = u.days_ago === null
+      ? '<span class="text-muted small">Never</span>'
+      : `<span class="badge ${u.days_ago<=3?'bg-danger':u.days_ago<=14?'bg-warning text-dark':'bg-secondary'}">${daysAgo}</span>`;
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${escapeHTML(u.username)}</strong></td>
+      <td><span class="badge ${u.status==='ENABLED'?'bg-success':'bg-warning text-dark'}">${escapeHTML(u.status)}</span></td>
+      <td>${u.login_count>0?`<span class="badge bg-info text-dark">${u.login_count}</span>`:'<span class="text-muted">0</span>'}</td>
+      <td><small class="text-secondary">${escapeHTML(u.last_login)||'-'}</small></td>
+      <td>${daysBadge}</td>
+      <td>${u.top_bot?`<span class="badge bg-dark border border-info text-info">🤖 ${escapeHTML(u.top_bot)}</span>`:'<span class="text-muted">-</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+const _actSrch = document.getElementById('actSrchInput');
+if(_actSrch) _actSrch.addEventListener('input', function(){
+  const q = this.value.toLowerCase();
+  _renderActivityTable(_activityData.filter(u => u.username.toLowerCase().includes(q)));
+});
+
+// ========== Bot Management ==========
+
+let _liveData = [];
+
+async function loadLiveApps(){
+  const panel = document.getElementById('liveAppsPanel');
+  if(!panel) return;
+  try{
+    const res = await apiFetch('/api/admin/bot_activity');
+    _liveData = (res.status === 'ok') ? (res.data || []) : [];
+    if(_liveData.length === 0){
+      panel.innerHTML = '<span class="text-secondary small">No active apps right now</span>';
+      return;
+    }
+    panel.innerHTML = _liveData.map(a => `
+      <span class="badge bg-dark border border-success px-2 py-1">
+        🟢 ${a.app_name} <span class="text-success">${a.active_users} user${a.active_users>1?'s':''}</span>
+        <span class="text-secondary small">(${a.last_seen})</span>
+      </span>
+    `).join('');
+  }catch(e){ console.error(e); }
+}
+
+async function loadBots(){
+  const tbody = document.getElementById('botTable');
+  if(!tbody) return;
+  try{
+    const res = await apiFetch('/api/admin/bots');
+    if(res.status !== 'ok') return;
+    const rows = res.data || [];
+    tbody.innerHTML = '';
+    let i = 0;
+    for(const b of rows){
+      i++;
+      const tr = document.createElement('tr');
+      const badge = b.is_active ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-danger">OFF</span>';
+      const live = _liveData.find(l => l.app_name === b.app_name);
+      const activeNow = live ? `<span class="badge bg-success">🟢 ${live.active_users}</span>` : '<span class="text-secondary">-</span>';
+      const lastSeen = live ? live.last_seen : '-';
+      let actionBtns = '';
+      if(IS_SUPER) {
+        actionBtns = `
+          <button class="btn btn-sm ${b.is_active?'btn-warning':'btn-success'} me-1" onclick="toggleBot('${b.app_name}', ${b.is_active?0:1})">${b.is_active?'OFF':'ON'}</button>
+          <button class="btn btn-sm btn-premium btn-cyan text-dark me-1" onclick="editBotVersion('${b.app_name}', '${b.required_version}')">Edit Version</button>
+          <button class="btn btn-sm btn-premium btn-red" onclick="deleteBot('${b.app_name}')">Delete</button>
+        `;
+      } else {
+        actionBtns = `<span class="text-secondary small">View Only</span>`;
+      }
+      tr.innerHTML = `
+        <td>${i}</td>
+        <td>${b.app_name}</td>
+        <td>${b.required_version}</td>
+        <td>${badge}</td>
+        <td>${activeNow}</td>
+        <td>${lastSeen}</td>
+        <td>${b.created_at || ''}</td>
+        <td>${actionBtns}</td>`;
+      tbody.appendChild(tr);
+    }
+  }catch(e){ console.error(e); }
+}
+
+async function toggleBot(app_name, is_active){
+  const res = await apiFetch('/api/admin/toggle_bot', 'POST', {app_name, is_active});
+  toast(res.message || JSON.stringify(res));
+  await loadBots();
+}
+
+async function editBotVersion(app_name, current){
+  const v = prompt(`Set required version for ${app_name}:`, current);
+  if(!v) return;
+  const res = await apiFetch('/api/admin/update_bot_version', 'POST', {app_name, required_version: v});
+  toast(res.message || JSON.stringify(res));
+  await loadBots();
+}
+
+async function deleteBot(app_name){
+  if(!confirm(`Delete bot ${app_name}?`)) return;
+  const res = await apiFetch('/api/admin/delete_bot', 'POST', {app_name});
+  toast(res.message || JSON.stringify(res));
+  await loadBots();
+}
+
+const addBotForm = document.getElementById('addBotForm');
+if(addBotForm){
+  addBotForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    const res = await apiFetch('/api/admin/add_bot', 'POST', body);
+    toast(res.message || JSON.stringify(res));
+    await loadBots();
+    e.target.reset();
+  });
+}
+
+// ========== Stats Panel ==========
+async function loadStats(){
+  try{
+    const res = await apiFetch('/api/admin/stats');
+    if(res.status === 'ok') {
+      // statsPanel is always visible (no section hiding)
+      document.getElementById('statTotalUsers').innerText = res.data.total_users;
+      document.getElementById('statActiveUsers').innerText = res.data.active_users;
+      const expEl = document.getElementById('statExpiredUsers');
+      if(expEl) expEl.innerText = res.data.expired_users ?? 0;
+      const subEl = document.getElementById('statSubAdmins');
+      if(subEl) subEl.innerText = res.data.total_subadmins;
+    }
+  }catch(e){console.error(e);}
+}
+
+async function refreshAll(){ await loadLiveApps(); await loadBots(); await loadStats(); await loadDashboardStats(); if(window._currentSection === 'myaccount') await loadMyAccount(); }
+refreshAll();
+if(IS_SUPER){ setInterval(refreshAll, 5000); }
+
+// ========== Per-User Bot Blocking (Modal-based) ==========
+let _userBotsModalInstance = null;
+let _userBotsTarget = null;
+
+async function manageBots(username){
+  _userBotsTarget = username;
+  document.getElementById('userBotsModalName').textContent = username;
+  document.getElementById('userBotsList').innerHTML = '';
+  document.getElementById('userBotsModalLoading').style.display = '';
+  document.getElementById('userBotsModalHint').textContent = '';
+
+  const modalEl = document.getElementById('userBotsModal');
+  _userBotsModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+  _userBotsModalInstance.show();
+
+  try{
+    const res = await apiFetch(`/api/admin/user_bots?username=${encodeURIComponent(username)}`);
+    document.getElementById('userBotsModalLoading').style.display = 'none';
+    if(res.status !== 'ok'){ document.getElementById('userBotsList').innerHTML = `<div class="text-danger">${res.message}</div>`; return; }
+    const bots = res.data || [];
+    if(bots.length === 0){
+      document.getElementById('userBotsList').innerHTML = '<div class="text-secondary">No bots configured or none assigned to you.</div>';
+      return;
+    }
+    const blocked = bots.filter(b=>b.blocked).length;
+    document.getElementById('userBotsModalHint').textContent = blocked > 0 ? `${blocked} bot(s) blocked` : 'All bots allowed';
+    renderUserBotsList(bots, username);
+  }catch(e){
+    document.getElementById('userBotsModalLoading').style.display = 'none';
+    document.getElementById('userBotsList').innerHTML = `<div class="text-danger">Error: ${e.message}</div>`;
+  }
+}
+
+function renderUserBotsList(bots, username){
+  const container = document.getElementById('userBotsList');
+  container.innerHTML = '';
+  bots.forEach(b => {
+    const isBlocked = b.blocked;
+    const row = document.createElement('div');
+    row.className = `d-flex align-items-center justify-content-between border border-secondary rounded p-2 mb-2`;
+    row.style.background = isBlocked ? 'rgba(220,53,69,.12)' : 'rgba(25,135,84,.1)';
+    row.id = `ubrow_${CSS.escape(b.app_name)}`;
+    row.innerHTML = `
+      <div>
+        <span class="fw-bold">${b.app_name}</span>
+        <small class="text-secondary ms-2">v${b.required_version}</small>
+      </div>
+      <button class="btn btn-sm ${isBlocked ? 'btn-success' : 'btn-premium btn-red'} ub-toggle-btn"
+              data-app="${b.app_name}"
+              data-blocked="${isBlocked ? '1' : '0'}"
+              data-username="${username}">
+        ${isBlocked ? '🟢 Unblock' : '🔴 Block'}
+      </button>`;
+    container.appendChild(row);
+  });
+}
+
+// Event delegation for block/unblock buttons inside userBotsModal
+document.addEventListener('click', async function(e){
+  const btn = e.target.closest('.ub-toggle-btn');
+  if(!btn) return;
+  const app_name = btn.dataset.app;
+  const username = btn.dataset.username;
+  const isBlocked = btn.dataset.blocked === '1';
+  const action = isBlocked ? 'unblock' : 'block';
+  btn.disabled = true;
+  btn.textContent = '...';
+  try{
+    const r = await apiFetch('/api/admin/toggle_user_bot','POST',{username, app_name, action});
+    if(r.status === 'ok'){
+      // Refresh bot list inline
+      await manageBots(username);
+    } else {
+      toast(r.message || 'Error');
+      btn.disabled = false;
+      btn.textContent = isBlocked ? '🟢 Unblock' : '🔴 Block';
+    }
+  }catch(ex){
+    toast('Error: ' + ex.message);
+    btn.disabled = false;
+  }
+});
+
+
+// ========== Download All Users ==========
+const downloadAllBtn = document.getElementById('downloadAllBtn');
+if(downloadAllBtn){
+  downloadAllBtn.addEventListener('click', async ()=>{
+    try{
+      const res = await fetch('/api/download_users');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'all_users.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    }catch(e){ toast('Download failed'); }
+  });
+}
+
+// ========== Backup Database ==========
+const backupDbBtn = document.getElementById('backupDbBtn');
+if(backupDbBtn){
+  backupDbBtn.addEventListener('click', ()=>{
+    window.location.href = '/api/admin/backup_db';
+  });
+}
+
+// ========== Change Password (SUB_ADMIN) ==========
+const cpSaveBtn = document.getElementById('cpSaveBtn');
+if(cpSaveBtn){
+  cpSaveBtn.addEventListener('click', async ()=>{
+    const current_password = document.getElementById('cpCurrentPw').value;
+    const new_password = document.getElementById('cpNewPw').value;
+    const confirm = document.getElementById('cpConfirmPw').value;
+    if(!current_password || !new_password){ toast('All fields are required.'); return; }
+    if(new_password !== confirm){ toast('New passwords do not match.'); return; }
+    if(new_password.length < 6){ toast('New password must be at least 6 characters.'); return; }
+    const res = await apiFetch('/api/change_password', 'POST', {current_password, new_password});
+    toast(res.message || JSON.stringify(res));
+    if(res.status === 'ok'){
+      document.getElementById('cpCurrentPw').value = '';
+      document.getElementById('cpNewPw').value = '';
+      document.getElementById('cpConfirmPw').value = '';
+      bootstrap.Modal.getInstance(document.getElementById('changePasswordModal'))?.hide();
+    }
+  });
+}
+
+// ========== Audit Log ==========
+async function loadAuditLog(){
+  const tbody = document.getElementById('auditLogTable');
+  if(!tbody) return;
+  const search = (document.getElementById('auditSearch')?.value || '').trim();
+  try{
+    const res = await apiFetch(`/api/admin/audit_log?limit=200&search=${encodeURIComponent(search)}`);
+    if(res.status !== 'ok'){ tbody.innerHTML = '<tr><td colspan="7">Failed to load</td></tr>'; return; }
+    const rows = res.data || [];
+    if(rows.length === 0){
+      tbody.innerHTML = '<tr><td colspan="7" class="text-secondary text-center">No log entries yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '';
+    const actionColors = {
+      ADD_USER:'success', DELETE_USER:'danger', TOGGLE_USER:'warning',
+      UPDATE_EXPIRY:'info', RENEW_LICENSE:'info', CLEAR_MACHINE:'secondary',
+      CLEAR_ALL_MACHINES:'danger', CHANGE_PASSWORD:'warning'
+    };
+    for(const r of rows){
+      const color = actionColors[r.action] || 'light';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.id}</td>
+        <td>${r.admin_username}</td>
+        <td><span class="badge bg-info text-dark">${r.role}</span></td>
+        <td><span class="badge bg-${color}">${r.action}</span></td>
+        <td>${r.target_user || '-'}</td>
+        <td class="text-secondary" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.detail}">${r.detail || '-'}</td>
+        <td>${r.created_at ? r.created_at.replace('T',' ').substring(0,19) : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }catch(e){ console.error(e); }
+}
+
+const auditRefreshBtn = document.getElementById('auditRefreshBtn');
+if(auditRefreshBtn){ auditRefreshBtn.addEventListener('click', ()=>loadAuditLog()); }
+const auditSearch = document.getElementById('auditSearch');
+if(auditSearch){ auditSearch.addEventListener('input', ()=>loadAuditLog()); }
+if(IS_SUPER){ loadAuditLog(); }
+
+// ===== Expose all onclick-used functions to window (global) scope =====
+// This is required when JS is in strict-mode or certain bundlers/scopes
+// that don't automatically make functions global.
+window.showSection        = showSection;
+window.toggleUser         = toggleUser;
+window.renewLicense       = renewLicense;
+window.editExpiry         = editExpiry;
+window.clearMachine       = clearMachine;
+window.deleteUser         = deleteUser;
+window.editTags           = editTags;
+window.editNote           = editNote;
+window.showNoteHistory    = showNoteHistory;
+window.manageBots         = manageBots;
+window.toggleBot          = toggleBot;
+window.editBotVersion     = editBotVersion;
+window.deleteBot          = deleteBot;
+window.toggleSubadmin     = toggleSubadmin;
+window.promptQuota        = promptQuota;
+window.promptMaxExpiry    = promptMaxExpiry;
+window.deleteSubadmin     = deleteSubadmin;
+window.viewAssignedUsers  = viewAssignedUsers;
+window.openPermsModal     = openPermsModal;
+window.openBotsModal      = openBotsModal;
+window.togglePw           = togglePw;
+
+// ---- Login History ----
+let _lhData = [];
+async function loadLoginHistory() {
+  document.getElementById('loginHistoryTable').innerHTML =
+    '<tr><td colspan="9" class="text-center text-secondary">Loading...</td></tr>';
+  try {
+    const r = await fetch('/api/admin/login_history?limit=500');
+    const j = await r.json();
+    if (j.status !== 'ok') throw new Error(j.message || 'error');
+    _lhData = j.data || [];
+    renderLoginHistory();
+  } catch(e) {
+    document.getElementById('loginHistoryTable').innerHTML =
+      `<tr><td colspan="9" class="text-center text-danger">Error: ${e.message}</td></tr>`;
+  }
+}
+function renderLoginHistory() {
+  const fu = (document.getElementById('lhFilterUser')?.value || '').toLowerCase();
+  const fa = (document.getElementById('lhFilterApp')?.value || '').toLowerCase();
+  const fd = (document.getElementById('lhFilterDate')?.value || '');
+  const rows = _lhData.filter(r =>
+    (!fu || r.username.toLowerCase().includes(fu)) &&
+    (!fa || (r.app_name||'').toLowerCase().includes(fa)) &&
+    (!fd || (r.time||'').startsWith(fd))
+  );
+  const meta = document.getElementById('lhMeta');
+  if (meta) meta.textContent = `Showing ${rows.length} of ${_lhData.length} records (last 500)`;
+  const tb = document.getElementById('loginHistoryTable');
+  if (!tb) return;
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="9" class="text-center text-secondary">No records found</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map((r, i) =>
+    `<tr>
+      <td>${i+1}</td>
+      <td><code class="lh-user-link" data-username="${escapeHTML(r.username)}" style="cursor:pointer;text-decoration:underline dotted" title="Click to find user">${escapeHTML(r.username)}</code></td>
+      <td><span class="badge bg-secondary">${escapeHTML(r.app_name||'-')}</span></td>
+      <td>${escapeHTML(r.version||'-')}</td>
+      <td><small class="text-secondary">${escapeHTML((r.machine_id||'-').substring(0,16))}…</small></td>
+      <td>${escapeHTML(r.ip||'-')}</td>
+      <td>${escapeHTML(r.os||'-')}</td>
+      <td>${escapeHTML(r.host||'-')}</td>
+      <td><small>${escapeHTML(r.time||'-')}</small></td>
+    </tr>`
+  ).join('');
+}
+window.loadLoginHistory   = loadLoginHistory;
+window.renderLoginHistory = renderLoginHistory;
+
+// ---- Sub-Admin Activity Summary ----
+async function loadSubadminActivity() {
+  const container = document.getElementById('subadminActivityCards');
+  if (!container) return;
+  container.innerHTML = '<div class="col-12 text-secondary small">Loading...</div>';
+  try {
+    const res = await apiFetch('/api/admin/subadmin_activity');
+    if (res.status !== 'ok') {
+      container.innerHTML = `<div class="col-12 text-danger small">Error: ${escapeHTML(res.message || 'Failed to load')}</div>`;
+      return;
+    }
+    const data = res.data || [];
+    if (!data.length) {
+      container.innerHTML = '<div class="col-12 text-secondary small">No sub-admins found.</div>';
+      return;
+    }
+    container.innerHTML = data.map(a => {
+      const activeBadge = a.is_active
+        ? '<span class="badge bg-success ms-1" style="font-size:0.65rem">Active</span>'
+        : '<span class="badge bg-secondary ms-1" style="font-size:0.65rem">Disabled</span>';
+      return `
+        <div class="col-sm-6 col-md-4 col-lg-3">
+          <div class="premium-card p-2" style="border-color:#213041;background:#0a1020">
+            <div class="d-flex align-items-center mb-1">
+              <span class="fw-bold small text-info">${escapeHTML(a.username)}</span>
+              ${activeBadge}
+            </div>
+            <div class="d-flex flex-wrap gap-2" style="font-size:0.78rem">
+              <span title="Total Users" class="text-secondary">👥 <b class="text-light">${a.total_users}</b></span>
+              <span title="Active Users" class="text-secondary">🟢 <b class="text-success">${a.active_users}</b></span>
+              <span title="Expired Users" class="text-secondary">🔴 <b class="text-danger">${a.expired_users}</b></span>
+              <span title="Total Logins" class="text-secondary">🔑 <b class="text-warning">${a.login_count}</b></span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<div class="col-12 text-danger small">Error: ${escapeHTML(e.message)}</div>`;
+  }
+}
+window.loadSubadminActivity = loadSubadminActivity;
+
+// ---- Jump from user table Logins badge → Login History ----
+function jumpToLoginHistory(username) {
+  showSection('loginhistory');
+  const inp = document.getElementById('lhFilterUser');
+  if(inp){ inp.value = username; }
+  loadLoginHistory().then(() => renderLoginHistory());
+}
+window.jumpToLoginHistory = jumpToLoginHistory;
+
+// ---- Login History username click → jump to Users section ----
+document.addEventListener('click', function(e){
+  const link = e.target.closest('.lh-user-link');
+  if(!link) return;
+  const uname = link.dataset.username;
+  if(!uname) return;
+  showSection('dashboard');
+  const si = document.getElementById('searchInput');
+  if(si){ si.value = uname; }
+  loadUsers(1);
+});
+
+function loadDevices() {
+    fetch('/api/admin/devices')
+    .then(res => res.json())
+    .then(data => {
+        const tbody = document.getElementById('devicesTableBody');
+        tbody.innerHTML = '';
+        if(data.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">No devices connected</td></tr>';
+            return;
+        }
+        data.data.forEach(d => {
+            const status = d.is_connected ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${d.device_name}<br><small class="text-muted">ID: ${d.device_id}</small></td>
+                <td>${status}</td>
+                <td>${d.last_ping ? new Date(d.last_ping + 'Z').toLocaleString() : 'Never'}</td>
+                <td>
+                    <button class="btn btn-sm btn-premium btn-red" onclick="deleteDevice('${d.device_id}')">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+function submitCreateDevice() {
+    const name = document.getElementById('newDeviceName').value.trim();
+    if(!name) {
+        toast("Please enter a device name.");
+        return;
+    }
+    fetch('/api/admin/create_device', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({device_name: name})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === 'ok') {
+            toast(`Device Created! \n\nYour Device ID is: ${data.device_id}\n\nPlease enter this in the Android App.`);
+            document.getElementById('newDeviceName').value = '';
+            const modalEl = document.getElementById('addDeviceModal');
+            if(modalEl) {
+                const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if(modalInstance) modalInstance.hide();
+            }
+            loadDevices();
+        } else {
+            toast("Error: " + data.message);
+        }
+    });
+}
+
+function deleteDevice(id) {
+    if(!confirm("Are you sure you want to delete this device? SMS sync will stop working for it.")) return;
+    fetch('/api/admin/delete_device', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({device_id: id})
+    })
+    .then(res => res.json())
+    .then(data => {
+        loadDevices();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setInterval(() => {
+        const sec = document.querySelector('[data-section="devices"]');
+        if (sec && !sec.classList.contains('section-hidden')) {
+            loadDevices();
+        }
+    }, 10000);
+});
+
+  // ============================================================
+  // TOAST NOTIFICATION SYSTEM
+  // ============================================================
+  function toast(msg, type = 'info', title = '') {
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const titles = { success: 'Success', error: 'Error', warning: 'Warning', info: 'Info' };
+    const container = document.getElementById('toast-container');
+    if(!container) return;
+    const item = document.createElement('div');
+    item.className = `toast-item ${type}`;
+    item.innerHTML = `
+      <span class="toast-icon">${icons[type]||'ℹ️'}</span>
+      <div class="toast-body">
+        <div class="toast-title">${title || titles[type]}</div>
+        <div class="toast-msg">${msg}</div>
+      </div>
+      <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
+    `;
+    container.appendChild(item);
+    const timeout = type === 'error' ? 6000 : 4000;
+    setTimeout(() => removeToast(item), timeout);
+    return item;
+  }
+
+  function removeToast(el) {
+    if (!el || el.classList.contains('removing')) return;
+    el.classList.add('removing');
+    setTimeout(() => el.remove(), 260);
+  }
+
+  function confirmAction(msg, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <div style="font-size:2rem;text-align:center;margin-bottom:1rem;">⚠️</div>
+        <h6 style="font-weight:700;margin-bottom:0.75rem;text-align:center;">Confirm Action</h6>
+        <p style="color:var(--text-secondary);font-size:0.85rem;text-align:center;margin-bottom:1.5rem;">${msg}</p>
+        <div style="display:flex;gap:0.75rem;justify-content:center;">
+          <button id="conf-cancel" style="padding:0.5rem 1.5rem;border-radius:8px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);cursor:pointer;">Cancel</button>
+          <button id="conf-ok" style="padding:0.5rem 1.5rem;border-radius:8px;border:none;background:#ef4444;color:#fff;font-weight:700;cursor:pointer;">Confirm</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#conf-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#conf-ok').onclick = () => { overlay.remove(); onConfirm(); };
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  }
+</script>
+</body>
+
+
+</html>
