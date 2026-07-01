@@ -58,6 +58,9 @@
     <div class="nav-item" id="menu-sms" onclick="showSection('sms')"><span>📩</span> <span class="nav-label">Incoming SMS</span></div>
     <div class="nav-item" id="menu-payments" onclick="showSection('payments')"><span>💳</span> <span class="nav-label">Payment Methods</span></div>
     <div class="nav-item" id="menu-support" onclick="showSection('support')"><span>🎧</span> <span class="nav-label">Support Settings</span></div>
+    {% if session.get('role') == 'SUPER_ADMIN' %}
+    <div class="nav-item" onclick="window.location.href='/dashboard?section=subadmin'"><span>👥</span> <span class="nav-label text-warning fw-bold">Manage Sub Admin</span></div>
+    {% endif %}
     <div class="nav-item" onclick="window.location.href='/'"><span>⬅️</span> <span class="nav-label">Back to Main Admin</span></div>
   </nav>
 
@@ -181,6 +184,9 @@
                   <tr>
                     <th class="py-3 px-3 text-secondary" style="font-weight: 600;">ID</th>
                     <th class="py-3 px-3 text-secondary" style="font-weight: 600;">USERNAME</th>
+                    {% if is_super and not request.args.get('ref') %}
+                    <th class="py-3 px-3 text-secondary" style="font-weight: 600;">OWNER</th>
+                    {% endif %}
                     <th class="py-3 px-3 text-secondary" style="font-weight: 600;">LIMITS</th>
                     <th class="py-3 px-3 text-secondary" style="font-weight: 600;">STATUS</th>
                     <th class="py-3 px-3 text-secondary text-end" style="font-weight: 600;">ACTIONS</th>
@@ -220,6 +226,9 @@
                   <tr style="font-size: 0.75rem; color: #718096; text-transform: uppercase;">
                       <th class="py-3 px-4 fw-bold">Order ID</th>
                       <th class="py-3 fw-bold">Customer</th>
+                      {% if is_super and not request.args.get('ref') %}
+                      <th class="py-3 fw-bold">Owner</th>
+                      {% endif %}
                       <th class="py-3 fw-bold">Bot / Plan</th>
                       <th class="py-3 fw-bold">Amount</th>
                       <th class="py-3 fw-bold">Payment Info</th>
@@ -680,6 +689,33 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref') ? `?ref=${urlParams.get('ref')}` : '';
+    const qParam = urlParams.get('ref') ? `&ref=${urlParams.get('ref')}` : '';
+  const IS_SUPER = {{ 'true' if is_super else 'false' }};
+  const MY_ROLE = "{{ role }}";
+  const MY_PERMS = new Set({{ permissions_json|safe if permissions_json else '[]' }});
+
+  document.addEventListener("DOMContentLoaded", () => {
+      if(!IS_SUPER) {
+          if(!MY_PERMS.has('MANAGE_STORE_PRICING')) {
+              document.getElementById('menu-pricing')?.remove();
+              document.getElementById('menu-srvip')?.remove();
+              document.getElementById('menu-payments')?.remove();
+          }
+          if(!MY_PERMS.has('MANAGE_STORE_CUSTOMERS')) {
+              document.getElementById('menu-customers')?.remove();
+              document.getElementById('menu-licenses')?.remove();
+              document.getElementById('menu-vip')?.remove();
+          }
+          if(!MY_PERMS.has('MANAGE_STORE_ORDERS')) {
+              document.getElementById('menu-orders')?.remove();
+              document.getElementById('menu-sms')?.remove();
+          }
+          document.getElementById('menu-support')?.remove();
+      }
+  });
+
   // Globally inject CSRF token into all fetch POST requests
   const originalFetch = window.fetch;
   window.fetch = async function() {
@@ -743,7 +779,7 @@
       new bootstrap.Modal(document.getElementById('customerDetailsModal')).show();
 
       try {
-          let r = await fetch(`/api/admin/store/customer_stats/${c.username}`);
+          let r = await fetch(`/api/admin/store/customer_stats/${c.username}${refParam}`);
           let j = await r.json();
           if(j.status === 'ok') {
               let st = j.data;
@@ -762,7 +798,7 @@
   }
 
     async function loadLicenses() {
-        let r = await fetch('/api/admin/store/licenses');
+        let r = await fetch(`/api/admin/store/licenses${refParam}`);
         let j = await r.json();
         if (j.status === 'ok') {
             document.getElementById('licensesCount').innerText = j.data.length;
@@ -788,7 +824,7 @@
     }
   
     async function loadVipLicenses() {
-        let r = await fetch('/api/admin/store/vip_licenses');
+        let r = await fetch(`/api/admin/store/vip_licenses${refParam}`);
         let j = await r.json();
         if (j.status === 'ok') {
             document.getElementById('vipCount').innerText = j.data.length;
@@ -816,7 +852,7 @@
     let dashCharts = {};
     async function loadDashboardCharts() {
         try {
-            let r = await fetch('/api/admin/store/dashboard_charts');
+            let r = await fetch(`/api/admin/store/dashboard_charts${refParam}`);
             let j = await r.json();
             if(j.status !== 'ok') return;
             
@@ -852,7 +888,7 @@
 
     async function loadDashboardStats() {
     try {
-    let sr = await fetch('/api/admin/store/dashboard_stats');
+    let sr = await fetch(`/api/admin/store/dashboard_stats${refParam}`);
     let sj = await sr.json();
     if(sj.status === 'ok') {
         document.getElementById('stat_customers').innerText = sj.data.total_customers;
@@ -867,7 +903,7 @@
 
     async function loadOrders() {
     try {
-    let r = await fetch('/api/admin/store/orders'); 
+    let r = await fetch(`/api/admin/store/orders${refParam}`); 
     let j = await r.json();
     if(j.status !== 'ok') { toast && toast("Unauthorized - Orders"); return; }
     
@@ -889,7 +925,7 @@
 
     async function loadPricing() {
     try {
-    let pr = await fetch('/api/admin/store/pricing_list');
+    let pr = await fetch(`/api/admin/store/pricing_list${refParam}`);
     let pj = await pr.json();
     if(pj.status === 'ok') {
         let normalBots = pj.data.filter(p => p.app_name !== 'SR VIP ALL TOOLS');
@@ -934,7 +970,7 @@
 
     async function loadCustomers() {
     try {
-    let cr = await fetch('/api/admin/store/customers');
+    let cr = await fetch(`/api/admin/store/customers${refParam}`);
     let cj = await cr.json();
     if(cj.status === 'ok') {
         _allStoreCustomers = cj.data;
@@ -942,6 +978,9 @@
           <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
               <td class="py-3 px-3" style="font-family: monospace;">#${c.id}</td>
               <td class="py-3 px-3"><strong class="text-info">${c.username}</strong></td>
+              {% if is_super and not request.args.get('ref') %}
+              <td class="py-3 px-3"><span class="badge bg-secondary text-light">${c.admin_id || 'Super Admin'}</span></td>
+              {% endif %}
               <td class="py-3 px-3">
                 <div class="d-flex align-items-center">
                   <span class="fw-bold me-2">${c.clear_count} <span class="text-secondary fw-normal">/ ${c.clear_limit}</span></span>
@@ -969,7 +1008,7 @@
     async function loadPaymentMethods() {
     // Payment Methods are managed via the dynamic JSON modal.
     try {
-        let br = await fetch('/api/admin/store/active_bots');
+        let br = await fetch(`/api/admin/store/active_bots${refParam}`);
         let bj = await br.json();
         if(bj.status === 'ok') {
             document.getElementById('botList').innerHTML = bj.data.map(b => `<option value="${b}">`).join('');
@@ -1017,7 +1056,7 @@
   }
 
   async function loadIncomingSms() {
-      let r = await fetch('/api/admin/store/received_payments');
+      let r = await fetch(`/api/admin/store/received_payments${refParam}`);
       let j = await r.json();
       if(j.status === 'ok') {
           if (j.data.length === 0) {
@@ -1050,7 +1089,7 @@
   setInterval(loadDeviceSyncStatus, 60000);
   
   async function toggleCanBuy(id, can_buy) {
-      let r = await fetch('/api/admin/store/toggle_can_buy', {
+      let r = await fetch(`/api/admin/store/toggle_can_buy${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id: id, can_buy: can_buy})
       });
       loadAdmin();
@@ -1065,7 +1104,7 @@
       if(!app) return toast("App Name is required!");
       if(!p30 && !p60 && !p90) return toast("Please enter at least one price.");
       
-      let r = await fetch('/api/admin/store/pricing_multi', {
+      let r = await fetch(`/api/admin/store/pricing_multi${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({app_name: app, price_30: p30, price_60: p60, price_90: p90})
       });
@@ -1082,7 +1121,7 @@
       const p60 = document.getElementById('vip_price_60').value;
       const p90 = document.getElementById('vip_price_90').value;
       
-      let r = await fetch('/api/admin/store/pricing_multi', {
+      let r = await fetch(`/api/admin/store/pricing_multi${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({app_name: 'SR VIP ALL TOOLS', price_30: p30, price_60: p60, price_90: p90})
       });
@@ -1104,7 +1143,7 @@
       let expiry_date = document.getElementById('el_expiry').value;
       let status = document.getElementById('el_status').value;
       
-      let r = await fetch('/api/admin/store/update_license', {
+      let r = await fetch(`/api/admin/store/update_license${refParam}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({username, expiry_date, status})
       });
@@ -1120,7 +1159,7 @@
 
   async function deleteLicense(username) {
       if(!confirm(`Delete license ${username}? This will revoke access permanently.`)) return;
-      let r = await fetch('/api/admin/store/delete_license', {
+      let r = await fetch(`/api/admin/store/delete_license${refParam}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({username})
       });
@@ -1172,7 +1211,7 @@
           stock_status: document.getElementById('bp_stock_status').value
       };
       
-      let r = await fetch('/api/admin/store/update_pricing', {
+      let r = await fetch(`/api/admin/store/update_pricing${refParam}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
       });
@@ -1187,7 +1226,7 @@
 
   async function deletePrice(id) {
       if(!confirm('Remove this pricing from store?')) return;
-      let r = await fetch('/api/admin/store/delete_pricing', {
+      let r = await fetch(`/api/admin/store/delete_pricing${refParam}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: id})
       });
       let j = await r.json(); toast(j.message); loadAdmin();
@@ -1204,7 +1243,7 @@
       const pw = document.getElementById('ac_pass').value;
       if(!fn || !em || !un || !pw) return toast("Fill all fields");
 
-      let r = await fetch('/api/admin/store/add_customer', {
+      let r = await fetch(`/api/admin/store/add_customer${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, 
           body:JSON.stringify({full_name: fn, email: em, username: un, password: pw})
       });
@@ -1223,7 +1262,7 @@
       const csv = document.getElementById('bulk_csv').value;
       if(!csv) return toast("Paste CSV data first");
       
-      let r = await fetch('/api/admin/store/bulk_add_customers', {
+      let r = await fetch(`/api/admin/store/bulk_add_customers${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({csv: csv})
       });
       let j = await r.json(); toast(j.message);
@@ -1243,7 +1282,7 @@
   async function saveLimit() {
       const id = document.getElementById('el_id').value;
       const limit = document.getElementById('el_limit').value;
-      let r = await fetch('/api/admin/store/update_clear_limit', {
+      let r = await fetch(`/api/admin/store/update_clear_limit${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id: id, clear_limit: limit})
       });
       let j = await r.json(); toast(j.message);
@@ -1252,14 +1291,14 @@
   }
 
   async function toggleCustomer(id, is_active) {
-      let r = await fetch('/api/admin/store/toggle_customer', {
+      let r = await fetch(`/api/admin/store/toggle_customer${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id: id, is_active: is_active})
       });
       loadAdmin();
   }
 
   async function toggleVip(id, is_vip) {
-      let r = await fetch('/api/admin/store/toggle_vip', {
+      let r = await fetch(`/api/admin/store/toggle_vip${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id: id, is_vip: is_vip})
       });
       loadAdmin();
@@ -1267,7 +1306,7 @@
 
   async function deleteCustomer(id, username) {
       if(!confirm(`Delete customer ${username}?`)) return;
-      let r = await fetch('/api/admin/store/delete_customer', {
+      let r = await fetch(`/api/admin/store/delete_customer${refParam}`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id: id})
       });
       let j = await r.json(); toast(j.message); loadAdmin();
@@ -1275,7 +1314,7 @@
 
   async function approveOrder(id) {
     if(!confirm('Approve order? A random Username/Activation Key will be generated.')) return;
-    let r = await fetch('/api/admin/store/approve', {
+    let r = await fetch(`/api/admin/store/approve${refParam}`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({order_id: id})
     });
     let j = await r.json(); toast(j.message); loadAdmin();
@@ -1283,7 +1322,7 @@
 
   async function deleteOrder(id) {
     if(!confirm('Delete this order?')) return;
-    let r = await fetch('/api/admin/store/delete_order', {
+    let r = await fetch(`/api/admin/store/delete_order${refParam}`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({order_id: id})
     });
     let j = await r.json(); toast(j.message); loadAdmin();
@@ -1295,7 +1334,7 @@
       let note = document.getElementById('pm_note').value;
       
       if(!name || !details) return toast("Fill Name and Details");
-      let r = await fetch('/api/admin/store/payment_methods', {
+      let r = await fetch(`/api/admin/store/payment_methods${refParam}`, {
           method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({method_name: name, details: details, note: note})
       });
       let j = await r.json(); toast(j.message);
@@ -1309,14 +1348,14 @@
 
   async function deletePaymentMethod(id) {
       if(!confirm('Remove payment method?')) return;
-      let r = await fetch('/api/admin/store/delete_payment_method', {
+      let r = await fetch(`/api/admin/store/delete_payment_method${refParam}`, {
           method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({id: id})
       });
       loadAdmin();
   }
 
   async function loadSupportAdmin() {
-      let r = await fetch('/api/admin/store/settings');
+      let r = await fetch(`/api/admin/store/settings${refParam}`);
       let j = await r.json();
       if(j.status === 'ok') {
           document.getElementById('sup_tg').value = j.data.support_telegram || '';
@@ -1331,7 +1370,7 @@
           support_whatsapp: document.getElementById('sup_wa').value,
           support_facebook: document.getElementById('sup_fb').value
       };
-      let r = await fetch('/api/admin/store/settings', {
+      let r = await fetch(`/api/admin/store/settings${refParam}`, {
           method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
       });
       let j = await r.json(); toast(j.message);
@@ -1353,7 +1392,7 @@
 
   async function loadGateways() {
       try {
-          let res = await fetch('/api/admin/store/settings');
+          let res = await fetch(`/api/admin/store/settings${refParam}`);
           let j = await res.json();
           if(j.status === 'ok' && j.data) {
               let gwStr = j.data.mobile_banking_gateways;
@@ -1506,6 +1545,9 @@
       return `<tr style="border-bottom: 1px solid #1a2332;">
         <td class="py-3 px-4 text-secondary">#${o.id}</td>
         <td class="py-3 text-white">${o.customer}</td>
+        {% if is_super and not request.args.get('ref') %}
+        <td class="py-3"><span class="badge bg-secondary text-light">${o.admin_id || 'Super Admin'}</span></td>
+        {% endif %}
         <td class="py-3">
           <div class="text-white fw-bold">${o.app_name} ${isVip ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.6rem; border-radius:10px;">👑 SR VIP</span>' : ''}</div>
           <div class="text-secondary" style="font-size: 0.75rem;">${planMonths} <span class="text-info ms-1">v${o.version || '1.0'}</span></div>

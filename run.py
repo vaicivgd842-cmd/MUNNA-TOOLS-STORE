@@ -5,7 +5,7 @@ import os
 import logging
 
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+log.setLevel(logging.INFO)
 
 from app import create_app
 # Use _startup_init which wraps init_db + ensure_super_admin with Railway-ready

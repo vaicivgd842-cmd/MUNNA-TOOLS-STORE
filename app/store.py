@@ -9,6 +9,15 @@ import json
 from flask import Blueprint, request, current_app, jsonify, session, render_template, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from functools import wraps
+
+def store_has_perm(perm):
+    from flask import session
+    if session.get("role") == "SUPER_ADMIN": return True
+    if session.get("role") == "SUB_ADMIN":
+        return perm in session.get("permissions", [])
+    return False
+
 store_bp = Blueprint("store", __name__)
 DB = os.environ.get("DB_PATH", "/data/users.db")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
@@ -55,7 +64,8 @@ def init_store_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        admin_id TEXT
     )''')
     
     c.execute("PRAGMA table_info(store_customers)")
@@ -77,6 +87,9 @@ def init_store_db():
         c.execute("ALTER TABLE store_customers ADD COLUMN is_vip INTEGER DEFAULT 0")
     if 'can_buy' not in columns:
         c.execute("ALTER TABLE store_customers ADD COLUMN can_buy INTEGER DEFAULT 0")
+    if 'admin_id' not in columns:
+        c.execute("ALTER TABLE store_customers ADD COLUMN admin_id TEXT")
+        c.execute("UPDATE store_customers SET admin_id = 'munna' WHERE admin_id IS NULL")
     # Wipe any previously stored plain passwords (one-time migration)
     try:
         if 'plain_password' in columns:
@@ -89,7 +102,10 @@ def init_store_db():
         app_name TEXT NOT NULL,
         duration_days INTEGER NOT NULL,
         price REAL NOT NULL,
-        UNIQUE(app_name, duration_days)
+        is_active INTEGER NOT NULL DEFAULT 1,
+        stock_status TEXT NOT NULL DEFAULT 'Available',
+        admin_id TEXT NOT NULL DEFAULT 'munna',
+        UNIQUE(app_name, duration_days, admin_id)
     )''')
     
     c.execute("PRAGMA table_info(store_bot_pricing)")
@@ -102,13 +118,17 @@ def init_store_db():
     c.execute('''CREATE TABLE IF NOT EXISTS store_payment_methods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         method_name TEXT NOT NULL,
-        account_details TEXT NOT NULL
+        account_details TEXT NOT NULL,
+        admin_id TEXT
     )''')
     
     c.execute("PRAGMA table_info(store_payment_methods)")
     pm_columns = [col[1] for col in c.fetchall()]
     if 'note' not in pm_columns:
         c.execute("ALTER TABLE store_payment_methods ADD COLUMN note TEXT")
+    if 'admin_id' not in pm_columns:
+        c.execute("ALTER TABLE store_payment_methods ADD COLUMN admin_id TEXT")
+        c.execute("UPDATE store_payment_methods SET admin_id = 'munna' WHERE admin_id IS NULL")
 
     c.execute('''CREATE TABLE IF NOT EXISTS store_settings (
         key TEXT PRIMARY KEY,
@@ -152,7 +172,8 @@ def init_store_db():
         payment_screenshot TEXT,
         status TEXT DEFAULT 'PENDING',
         notes TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        admin_id TEXT
     )''')
     
     # Migrate: add missing columns if store_orders was created in an older version
@@ -173,6 +194,16 @@ def init_store_db():
             c.execute("ALTER TABLE store_orders ADD COLUMN status TEXT DEFAULT 'PENDING'")
         if 'notes' not in so_cols:
             c.execute("ALTER TABLE store_orders ADD COLUMN notes TEXT")
+        if 'admin_id' not in so_cols:
+            c.execute("ALTER TABLE store_orders ADD COLUMN admin_id TEXT")
+            c.execute("UPDATE store_orders SET admin_id = 'munna' WHERE admin_id IS NULL")
+
+    # Migrate store_received_payments
+    c.execute("PRAGMA table_info(store_received_payments)")
+    srp_cols = [r[1] for r in c.fetchall()]
+    if 'admin_id' not in srp_cols:
+        c.execute("ALTER TABLE store_received_payments ADD COLUMN admin_id TEXT")
+        c.execute("UPDATE store_received_payments SET admin_id = 'munna' WHERE admin_id IS NULL")
 
     # Performance Indexes
     c.execute("CREATE INDEX IF NOT EXISTS idx_store_orders_customer ON store_orders(customer_username, id DESC)")
@@ -231,10 +262,15 @@ def api_sms_webhook():
                 "UPDATE device_stats SET sms_count = sms_count + 1, last_seen = ? WHERE username = ?",
                 (now_iso, device_user)
             )
+            admin_id_ds = c_ds.execute("SELECT admin_id FROM device_stats WHERE username=?", (device_user,)).fetchone()
+            admin_id = admin_id_ds[0] if admin_id_ds else "munna"
             conn_ds.commit()
             conn_ds.close()
         except Exception as e:
+            admin_id = "munna"
             current_app.logger.error(f"Failed to update device_stats: {e}")
+    else:
+        admin_id = "munna"
 
     # Update to catch 'raw_message' based on your Android App logs
     msg = (
@@ -350,10 +386,10 @@ def api_sms_webhook():
     try:
         c.execute(
             "INSERT INTO store_received_payments"
-            "(trx_id, amount, sender_number, receiver_number, sms_text, old_balance, new_balance, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?)",
+            "(trx_id, amount, sender_number, receiver_number, sms_text, old_balance, new_balance, created_at, admin_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
             (trx_id, amount, sender, receiver_number or None, msg,
-             old_balance, new_balance, datetime.datetime.utcnow().isoformat())
+             old_balance, new_balance, datetime.datetime.utcnow().isoformat(), admin_id)
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -374,15 +410,32 @@ def api_sms_webhook():
 
 @store_bp.route("/api/admin/store/received_payments", methods=["GET"])
 def api_admin_get_sms_payments():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_ORDERS"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+        
     try:
-        c.execute("""
-            SELECT trx_id, amount, sender_number, sms_text, is_used, created_at,
-                   receiver_number, old_balance, new_balance
-            FROM store_received_payments
-            ORDER BY id DESC LIMIT 100
-        """)
+        if is_super:
+            c.execute("""
+                SELECT trx_id, amount, sender_number, sms_text, is_used, created_at,
+                       receiver_number, old_balance, new_balance
+                FROM store_received_payments
+                ORDER BY id DESC LIMIT 100
+            """)
+        else:
+            c.execute("""
+                SELECT trx_id, amount, sender_number, sms_text, is_used, created_at,
+                       receiver_number, old_balance, new_balance
+                FROM store_received_payments
+                WHERE admin_id=?
+                ORDER BY id DESC LIMIT 100
+            """, (admin_id,))
         data = [
             {
                 "trx_id":          r[0],
@@ -414,14 +467,30 @@ def store_signup_page():
 @store_bp.route("/store")
 def store_dashboard():
     if not session.get("customer_logged_in"):
-        return redirect("/store/login")
+        ref = request.args.get("ref")
+        if ref:
+            return redirect(url_for("store.store_login_page", ref=ref))
+        return redirect(url_for("store.store_login_page"))
     return render_template("store/customer_store.html")
 
 @store_bp.route("/api/store/payment_methods", methods=["GET"])
 def api_store_get_payment_methods():
+    # Determine admin_id
+    admin_id = request.args.get("ref")
+    if not admin_id and session.get("customer_logged_in"):
+        admin_id = session.get("customer_admin_id")
+    if not admin_id:
+        admin_id = "munna"
+        
+    setting_key = f"mobile_banking_gateways_{admin_id}" if admin_id != "munna" else "mobile_banking_gateways"
+
     conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT value FROM store_settings WHERE key='mobile_banking_gateways'")
+    c.execute("SELECT value FROM store_settings WHERE key=?", (setting_key,))
     row = c.fetchone()
+    # Fallback to super admin if sub admin hasn't set up methods
+    if not row:
+        c.execute("SELECT value FROM store_settings WHERE key='mobile_banking_gateways'")
+        row = c.fetchone()
     conn.close()
     
     data = []
@@ -462,8 +531,9 @@ def api_store_signup():
     conn = db_conn(); c = conn.cursor()
     try:
         # plain_password is NOT stored — security fix
-        c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 0)",
-                  (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), full_name, phone_number, email))
+        admin_id = data.get("admin_id", "munna")
+        c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy, admin_id) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 0, ?)",
+                  (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), full_name, phone_number, email, admin_id))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close(); return jsonify({"status": "error", "message": "Username already taken"}), 400
@@ -478,7 +548,7 @@ def api_store_login():
     p = data.get("password", "")
 
     conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT password_hash, is_active FROM store_customers WHERE username=?", (u,))
+    c.execute("SELECT password_hash, is_active, admin_id FROM store_customers WHERE username=?", (u,))
     row = c.fetchone()
     conn.close()
 
@@ -489,6 +559,7 @@ def api_store_login():
 
     session["customer_logged_in"] = True
     session["customer_username"] = u
+    session["customer_admin_id"] = row[2] or "munna"
     return jsonify({"status": "ok", "message": "Logged in successfully"})
 
 @store_bp.route("/api/store/logout", methods=["POST"])
@@ -502,16 +573,17 @@ def api_store_data():
     u = session.get("customer_username", "")
     conn = db_conn(); c = conn.cursor()
     
-    c.execute("SELECT full_name, phone_number, email, created_at, clear_limit, clear_count, is_vip, can_buy FROM store_customers WHERE username=?", (u,))
+    c.execute("SELECT full_name, phone_number, email, created_at, clear_limit, clear_count, is_vip, can_buy, admin_id FROM store_customers WHERE username=?", (u,))
         
     cust_info = c.fetchone()
     user_info = {"full_name": cust_info[0] if cust_info else "", "phone_number": cust_info[1] if cust_info else "", "email": cust_info[2] if cust_info else "", "created_at": cust_info[3][:10] if cust_info else "", "clear_limit": cust_info[4] if cust_info else 5, "clear_count": cust_info[5] if cust_info else 0, "is_vip": cust_info[6] if cust_info else 0, "can_buy": cust_info[7] if cust_info else 0}
+    cust_admin_id = cust_info[8] if cust_info and cust_info[8] else "munna"
 
     try:
-        c.execute("SELECT s.id, s.app_name, s.duration_days, s.price, s.stock_status, b.required_version FROM store_bot_pricing s LEFT JOIN bots b ON s.app_name = b.app_name WHERE s.is_active=1 ORDER BY s.app_name, s.duration_days")
+        c.execute("SELECT s.id, s.app_name, s.duration_days, s.price, s.stock_status, b.required_version FROM store_bot_pricing s LEFT JOIN bots b ON s.app_name = b.app_name WHERE s.is_active=1 AND s.admin_id=? ORDER BY s.app_name, s.duration_days", (cust_admin_id,))
         pricing = [{"id": r[0], "app_name": r[1], "duration_days": r[2], "price": r[3], "stock_status": r[4], "version": r[5]} for r in c.fetchall()]
     except sqlite3.OperationalError:
-        c.execute("SELECT id, app_name, duration_days, price FROM store_bot_pricing WHERE is_active=1 ORDER BY app_name, duration_days")
+        c.execute("SELECT id, app_name, duration_days, price FROM store_bot_pricing WHERE is_active=1 AND admin_id=? ORDER BY app_name, duration_days", (cust_admin_id,))
         pricing = [{"id": r[0], "app_name": r[1], "duration_days": r[2], "price": r[3], "stock_status": "Available", "version": "1.0"} for r in c.fetchall()]
     
     c.execute("SELECT id, notes, total_amount, status, created_at FROM store_orders WHERE customer_username=? ORDER BY id DESC", (u,))
@@ -614,7 +686,8 @@ def api_store_buy():
         if not p: conn.close(); return jsonify({"status": "error", "message": "Pricing item not found or currently unavailable"}), 404
     
         # ---------------- MACRODROID AUTO APPROVAL LOGIC ----------------
-        c.execute("SELECT id, amount FROM store_received_payments WHERE trx_id=? AND is_used=0", (trx,))
+        customer_admin_id = session.get("customer_admin_id", "munna")
+        c.execute("SELECT id, amount FROM store_received_payments WHERE trx_id=? AND is_used=0 AND admin_id=?", (trx, customer_admin_id))
         rx_row = c.fetchone()
     
         auto_approved = False
@@ -640,8 +713,19 @@ def api_store_buy():
             today = datetime.date.today()
             new_expiry = today + datetime.timedelta(days=p[1])
         
-            c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
-                (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), u, 'STORE_CUSTOMER'))
+            # Fetch admin integer ID
+            c.execute("SELECT id FROM admins WHERE username=?", (customer_admin_id,))
+            admin_row = c.fetchone()
+            admin_id_int = admin_row[0] if admin_row else 1
+        
+            c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, admin_id, created_by_admin_id, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?,?,?)",
+                (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), admin_id_int, admin_id_int, u, 'STORE_CUSTOMER'))
+            
+            new_user_id = c.lastrowid
+            try:
+                c.execute("INSERT INTO admin_user_access(admin_id, user_id) VALUES (?,?)", (admin_id_int, new_user_id))
+            except sqlite3.IntegrityError:
+                pass
             
             if 'ALL TOOLS' in p[0].upper():
                 try:
@@ -693,6 +777,10 @@ def api_store_buy():
             insert_cols.append("price")
             insert_vals.append(p[2])
             
+        if 'admin_id' in cols:
+            insert_cols.append("admin_id")
+            insert_vals.append(session.get("customer_admin_id", "munna"))
+            
         placeholders = ",".join(["?"] * len(insert_vals))
         col_names = ",".join(insert_cols)
         
@@ -723,12 +811,18 @@ def api_store_support_info():
 
 @store_bp.route("/admin/store")
 def admin_store_dashboard():
-    if session.get("role") != "SUPER_ADMIN": return "Forbidden", 403
-    return render_template("store/admin_store.html")
+    if not store_has_perm("STORE_SUB_ADMIN"): return "Forbidden", 403
+    import json
+    is_super = (session.get("role") == "SUPER_ADMIN")
+    perms = session.get("permissions", [])
+    return render_template("store/admin_store.html",
+                           is_super=is_super,
+                           role=session.get("role", ""),
+                           permissions_json=json.dumps(perms))
 
 @store_bp.route("/api/admin/store/settings", methods=["GET", "POST"])
 def api_admin_store_settings():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     if request.method == "POST":
         d = request.get_json() or {}
@@ -739,18 +833,47 @@ def api_admin_store_settings():
     else:
         c.execute("SELECT key, value FROM store_settings")
         data = {r[0]: r[1] for r in c.fetchall()}; conn.close()
+        
+        # Override mobile_banking_gateways for Sub Admin
+        admin_id = session.get("admin_username", "munna")
+        if admin_id != "munna":
+            admin_gateways_key = f"mobile_banking_gateways_{admin_id}"
+            if admin_gateways_key in data:
+                data["mobile_banking_gateways"] = data[admin_gateways_key]
+            else:
+                data["mobile_banking_gateways"] = "[]" # Default empty for sub-admin if not set yet
+                
         return jsonify({"status": "ok", "data": data})
 
 @store_bp.route("/api/admin/store/dashboard_stats", methods=["GET"])
 def api_admin_store_dashboard_stats():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM store_customers"); tot_cust = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM store_orders"); tot_ord = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM store_orders WHERE status='PENDING'"); pend_ord = c.fetchone()[0]
-    c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED'"); revenue = c.fetchone()[0] or 0.0
-    c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND date(created_at) = date('now')"); today_rev = c.fetchone()[0] or 0.0
-    c.execute("SELECT COUNT(DISTINCT app_name) FROM store_bot_pricing WHERE is_active=1"); active_bots = c.fetchone()[0] or 0
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+        
+    if is_super:
+        c.execute("SELECT COUNT(*) FROM store_customers"); tot_cust = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM store_orders"); tot_ord = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM store_orders WHERE status='PENDING'"); pend_ord = c.fetchone()[0]
+        c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED'"); revenue = c.fetchone()[0] or 0.0
+        c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND date(created_at) = date('now')"); today_rev = c.fetchone()[0] or 0.0
+    else:
+        c.execute("SELECT COUNT(*) FROM store_customers WHERE admin_id=?", (admin_id,)); tot_cust = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM store_orders WHERE admin_id=?", (admin_id,)); tot_ord = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM store_orders WHERE status='PENDING' AND admin_id=?", (admin_id,)); pend_ord = c.fetchone()[0]
+        c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND admin_id=?", (admin_id,)); revenue = c.fetchone()[0] or 0.0
+        c.execute("SELECT SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND date(created_at) = date('now') AND admin_id=?", (admin_id,)); today_rev = c.fetchone()[0] or 0.0
+    if is_super:
+        c.execute("SELECT COUNT(DISTINCT app_name) FROM store_bot_pricing WHERE is_active=1")
+    else:
+        c.execute("SELECT COUNT(DISTINCT app_name) FROM store_bot_pricing WHERE is_active=1 AND admin_id=?", (admin_id,))
+    active_bots = c.fetchone()[0] or 0
     conn.close()
     return jsonify({"status": "ok", "data": {
         "total_customers": tot_cust, 
@@ -763,11 +886,17 @@ def api_admin_store_dashboard_stats():
 
 @store_bp.route("/api/admin/store/dashboard_charts", methods=["GET"])
 def api_admin_store_dashboard_charts():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
     # Revenue over last 30 days
-    c.execute("SELECT date(created_at), SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND created_at >= date('now', '-30 days') GROUP BY date(created_at) ORDER BY date(created_at)")
+    if is_super:
+        c.execute("SELECT date(created_at), SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND created_at >= date('now', '-30 days') GROUP BY date(created_at) ORDER BY date(created_at)")
+    else:
+        c.execute("SELECT date(created_at), SUM(total_amount) FROM store_orders WHERE status='APPROVED' AND created_at >= date('now', '-30 days') AND admin_id=? GROUP BY date(created_at) ORDER BY date(created_at)", (admin_id,))
     rev_data = c.fetchall()
     
     # Generate last 30 days labels
@@ -783,7 +912,10 @@ def api_admin_store_dashboard_charts():
         data_points.append(round(data_map.get(d, 0.0), 2))
         
     # Popular Bots
-    c.execute("SELECT json_extract(notes, '$.app_name'), COUNT(*) FROM store_orders WHERE status='APPROVED' AND notes IS NOT NULL GROUP BY json_extract(notes, '$.app_name') ORDER BY COUNT(*) DESC LIMIT 5")
+    if is_super:
+        c.execute("SELECT json_extract(notes, '$.app_name'), COUNT(*) FROM store_orders WHERE status='APPROVED' AND notes IS NOT NULL GROUP BY json_extract(notes, '$.app_name') ORDER BY COUNT(*) DESC LIMIT 5")
+    else:
+        c.execute("SELECT json_extract(notes, '$.app_name'), COUNT(*) FROM store_orders WHERE status='APPROVED' AND notes IS NOT NULL AND admin_id=? GROUP BY json_extract(notes, '$.app_name') ORDER BY COUNT(*) DESC LIMIT 5", (admin_id,))
     bot_data = c.fetchall()
     bot_labels = [r[0] for r in bot_data if r[0]]
     bot_counts = [r[1] for r in bot_data if r[0]]
@@ -799,7 +931,7 @@ def api_admin_store_dashboard_charts():
 
 @store_bp.route("/api/admin/store/customer_stats/<username>", methods=["GET"])
 def api_admin_store_customer_stats(username):
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("SELECT COUNT(DISTINCT app_name) FROM store_bot_pricing WHERE is_active=1")
     avail_bots = c.fetchone()[0]
@@ -833,40 +965,71 @@ def api_admin_store_customer_stats(username):
 
 @store_bp.route("/api/admin/store/active_bots", methods=["GET"])
 def api_admin_store_active_bots():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
-    try: c.execute("SELECT app_name FROM bots WHERE is_active=1"); bots = [r[0] for r in c.fetchall()]
-    except Exception: bots = []
+    admin_id = session.get("admin_username")
+    admin_id_int = session.get("admin_id")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    try:
+        if is_super:
+            c.execute("SELECT app_name FROM bots WHERE is_active=1")
+        else:
+            c.execute("""
+                SELECT b.app_name FROM bots b
+                JOIN subadmin_bot_access sa ON b.app_name = sa.app_name
+                WHERE b.is_active=1 AND sa.admin_id=?
+            """, (admin_id_int,))
+        bots = [r[0] for r in c.fetchall()]
+    except Exception as e: 
+        print("Active bots fetch error:", e)
+        bots = []
     conn.close()
     return jsonify({"status": "ok", "data": bots})
 
 @store_bp.route("/api/admin/store/pricing_list", methods=["GET"])
 def api_admin_store_pricing_list():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_PRICING") and not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
+    
+    admin_id = session.get("admin_username")
+    admin_id_int = session.get("admin_id")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
     main_bots_map = {}
     try:
-        c.execute("SELECT app_name, required_version FROM bots")
+        # If super admin, fetch all bots, else fetch only allowed bots
+        if is_super:
+            c.execute("SELECT app_name, required_version FROM bots")
+        else:
+            c.execute("""
+                SELECT b.app_name, b.required_version 
+                FROM bots b
+                JOIN subadmin_bot_access sa ON b.app_name = sa.app_name
+                WHERE sa.admin_id = ?
+            """, (admin_id_int,))
         main_bots_map = {r[0]: r[1] for r in c.fetchall()}
         
         for b_name in main_bots_map.keys():
             for days in [30, 60, 90]:
-                c.execute("SELECT id FROM store_bot_pricing WHERE app_name=? AND duration_days=?", (b_name, days))
+                c.execute("SELECT id FROM store_bot_pricing WHERE app_name=? AND duration_days=? AND admin_id=?", (b_name, days, admin_id))
                 if not c.fetchone():
-                    c.execute("INSERT INTO store_bot_pricing(app_name, duration_days, price, is_active, stock_status) VALUES (?, ?, 0.0, 0, 'Available')", (b_name, days))
+                    c.execute("INSERT INTO store_bot_pricing(app_name, duration_days, price, is_active, stock_status, admin_id) VALUES (?, ?, 0.0, 0, 'Available', ?)", (b_name, days, admin_id))
         conn.commit()
     except Exception as e:
         print("Pricing sync error:", e)
 
     try:
-        c.execute("SELECT app_name, duration_days, price, is_active, stock_status FROM store_bot_pricing ORDER BY app_name, duration_days")
+        c.execute("SELECT app_name, duration_days, price, is_active, stock_status FROM store_bot_pricing WHERE admin_id=? ORDER BY app_name, duration_days", (admin_id,))
     except sqlite3.OperationalError:
-        # Fallback if stock_status migration didn't run cleanly on some old rows
-        c.execute("SELECT app_name, duration_days, price, is_active, 'Available' FROM store_bot_pricing ORDER BY app_name, duration_days")
+        c.execute("SELECT app_name, duration_days, price, is_active, 'Available' FROM store_bot_pricing WHERE admin_id=? ORDER BY app_name, duration_days", (admin_id,))
 
     data_dict = {}
     for r in c.fetchall():
         app, days, price, is_active, stock_status = r
+        # Only include apps that the user currently has access to
+        if app not in main_bots_map:
+            continue
+            
         if app not in data_dict:
             data_dict[app] = {
                 "app_name": app,
@@ -891,17 +1054,30 @@ def api_admin_store_pricing_list():
 
 @store_bp.route("/api/admin/store/customers", methods=["GET"])
 def api_admin_store_customers():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
-    # plain_password column excluded — replaced by admin reset-password feature
-    c.execute("SELECT id, username, full_name, phone_number, email, created_at, is_active, clear_limit, clear_count, is_vip, can_buy FROM store_customers ORDER BY id DESC")
-    data = [{"id": r[0], "username": r[1], "full_name": r[2], "phone_number": r[3], "email": r[4], "created_at": r[5], "is_active": r[6], "clear_limit": r[7], "clear_count": r[8], "is_vip": r[9], "can_buy": r[10]} for r in c.fetchall()]
+    # plain_password column excluded - replaced by admin reset-password feature
+    
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+        
+    if is_super:
+        c.execute("SELECT id, username, full_name, phone_number, email, created_at, is_active, clear_limit, clear_count, is_vip, can_buy, admin_id FROM store_customers ORDER BY id DESC")
+    else:
+        c.execute("SELECT id, username, full_name, phone_number, email, created_at, is_active, clear_limit, clear_count, is_vip, can_buy, admin_id FROM store_customers WHERE admin_id=? ORDER BY id DESC", (admin_id,))
+        
+    data = [{"id": r[0], "username": r[1], "full_name": r[2], "phone_number": r[3], "email": r[4], "created_at": r[5], "is_active": r[6], "clear_limit": r[7], "clear_count": r[8], "is_vip": r[9], "can_buy": r[10], "admin_id": r[11]} for r in c.fetchall()]
     conn.close()
     return jsonify({"status": "ok", "data": data})
 
 @store_bp.route("/api/admin/store/add_customer", methods=["POST"])
 def api_admin_store_add_customer():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     data = request.get_json() or {}
     full_name = data.get("full_name", "").strip()
     phone_number = data.get("phone_number", "").strip()
@@ -911,10 +1087,14 @@ def api_admin_store_add_customer():
     if not full_name or not email or not u or not p: return jsonify({"status": "error", "message": "All fields are required"}), 400
     if len(p) < 8: return jsonify({"status": "error", "message": "Password must be at least 8 characters"}), 400
     conn = db_conn(); c = conn.cursor()
+    admin_id = session.get("admin_username")
+    ref = request.args.get("ref")
+    if session.get("role") == "SUPER_ADMIN" and ref:
+        admin_id = ref
     try:
-        # plain_password is NOT stored — use reset-password feature instead
-        c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 1)",
-                  (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), full_name, phone_number, email))
+        # plain_password is NOT stored - use reset-password feature instead
+        c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy, admin_id) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 1, ?)",
+                  (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), full_name, phone_number, email, admin_id))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close(); return jsonify({"status": "error", "message": "Username already exists"}), 400
@@ -923,28 +1103,43 @@ def api_admin_store_add_customer():
 
 @store_bp.route("/api/admin/store/bulk_add_customers", methods=["POST"])
 def api_admin_store_bulk_add_customers():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
-    csv_data = (request.get_json() or {}).get("csv", "")
-    if not csv_data: return jsonify({"status": "error", "message": "No data provided"}), 400
-    conn = db_conn(); c = conn.cursor(); lines = csv_data.strip().split("\n"); added = 0; failed = 0
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
+    lines = (request.form.get("customers_text") or "").strip().split("\n")
+    if not lines or not lines[0]: return jsonify({"status": "error", "message": "No data provided"}), 400
+    
+    conn = db_conn(); c = conn.cursor()
+    added = 0; failed = 0
+    admin_id = session.get("admin_username")
+    ref = request.args.get("ref")
+    if session.get("role") == "SUPER_ADMIN" and ref:
+        admin_id = ref
     for line in lines:
-        parts = [x.strip() for x in line.split(",")]
+        parts = [p.strip() for p in line.split("|")]
         if len(parts) >= 5:
-            fname, phone, email, u, p = parts[0], parts[1], parts[2], parts[3], parts[4]
-            if not u or not p or len(p) < 8: failed += 1; continue
-            try:
-                # plain_password is NOT stored — security fix
-                c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 1)",
-                          (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), fname, phone, email))
-                added += 1
-            except Exception: failed += 1
+            u, p, fname, phone, email = parts[:5]
+            if len(p) >= 8:
+                try:
+                    c.execute("INSERT INTO store_customers(username, password_hash, created_at, full_name, phone_number, email, is_active, clear_limit, clear_count, is_vip, can_buy, admin_id) VALUES (?, ?, ?, ?, ?, ?, 1, 5, 0, 0, 1, ?)",
+                              (u, generate_password_hash(p), datetime.datetime.utcnow().isoformat(), fname, phone, email, admin_id))
+                    added += 1
+                except Exception: failed += 1
+            else: failed += 1
         else: failed += 1
     conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": f"Successfully added {added} customers. {failed} failed."})
 
 @store_bp.route("/api/admin/store/toggle_can_buy", methods=["POST"])
 def api_admin_store_toggle_can_buy():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
+    admin_id = session.get("admin_username")
+    d = request.get_json() or {}
+    cid = d.get("id")
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor()
+        cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (cid,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if not row or row[0] != admin_id: return jsonify({"status": "error"}), 403
     d = request.get_json() or {}
     cid, can_buy = d.get("id"), d.get("can_buy")
     conn = db_conn(); c = conn.cursor()
@@ -954,69 +1149,86 @@ def api_admin_store_toggle_can_buy():
 
 @store_bp.route("/api/admin/store/toggle_customer", methods=["POST"])
 def api_admin_store_toggle_customer():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}; cid, is_active = d.get("id"), d.get("is_active")
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor(); cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (cid,)); row = cur.fetchone(); cur.close(); conn.close()
+        if not row or row[0] != session.get("admin_username"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("UPDATE store_customers SET is_active=? WHERE id=?", (int(is_active), cid)); conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "Customer status updated"})
 
 @store_bp.route("/api/admin/store/toggle_vip", methods=["POST"])
 def api_admin_store_toggle_vip():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}; cid, is_vip = d.get("id"), d.get("is_vip")
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor(); cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (cid,)); row = cur.fetchone(); cur.close(); conn.close()
+        if not row or row[0] != session.get("admin_username"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("UPDATE store_customers SET is_vip=? WHERE id=?", (int(is_vip), cid)); conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "VIP status updated"})
 
 @store_bp.route("/api/admin/store/delete_customer", methods=["POST"])
 def api_admin_store_delete_customer():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     cid = request.get_json().get("id")
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor(); cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (cid,)); row = cur.fetchone(); cur.close(); conn.close()
+        if not row or row[0] != session.get("admin_username"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("DELETE FROM store_customers WHERE id=?", (cid,)); conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "Customer deleted successfully"})
 
 @store_bp.route("/api/admin/store/update_clear_limit", methods=["POST"])
 def api_admin_store_update_limit():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}; cid, new_limit = d.get("id"), d.get("clear_limit")
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor(); cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (cid,)); row = cur.fetchone(); cur.close(); conn.close()
+        if not row or row[0] != session.get("admin_username"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("UPDATE store_customers SET clear_limit=? WHERE id=?", (int(new_limit), cid)); conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "Clear limit updated"})
 
 @store_bp.route("/api/store_admin/settings", methods=["POST"])
 def api_store_admin_settings_save():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_PRICING"): return jsonify({"status": "error"}), 403
     data = request.get_json() or {}
     gateways = data.get("mobile_banking_gateways")
+    admin_id = session.get("admin_username", "munna")
+    setting_key = f"mobile_banking_gateways_{admin_id}" if admin_id != "munna" else "mobile_banking_gateways"
+    
     if gateways is not None:
         conn = db_conn(); c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO store_settings(key, value) VALUES ('mobile_banking_gateways', ?)", (json.dumps(gateways),))
+        c.execute("INSERT OR REPLACE INTO store_settings(key, value) VALUES (?, ?)", (setting_key, json.dumps(gateways)))
         conn.commit(); conn.close()
         return jsonify({"status": "ok", "message": "Settings saved successfully"})
     return jsonify({"status": "error", "message": "Invalid settings payload"}), 400
 
 @store_bp.route("/api/admin/store/pricing_multi", methods=["POST"])
 def api_admin_store_pricing_multi():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_PRICING"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}
     app_name, p30, p60, p90 = d.get("app_name"), d.get("price_30"), d.get("price_60"), d.get("price_90")
     if not app_name: return jsonify({"status": "error", "message": "App Name is required"}), 400
+    admin_id = session.get("admin_username")
     conn = db_conn(); c = conn.cursor()
-    if p30 and str(p30).strip(): c.execute("INSERT OR REPLACE INTO store_bot_pricing(app_name, duration_days, price, is_active) VALUES (?,30,?,1)", (app_name, float(p30)))
-    if p60 and str(p60).strip(): c.execute("INSERT OR REPLACE INTO store_bot_pricing(app_name, duration_days, price, is_active) VALUES (?,60,?,1)", (app_name, float(p60)))
-    if p90 and str(p90).strip(): c.execute("INSERT OR REPLACE INTO store_bot_pricing(app_name, duration_days, price, is_active) VALUES (?,90,?,1)", (app_name, float(p90)))
+    if p30 and str(p30).strip(): c.execute("INSERT INTO store_bot_pricing(app_name, duration_days, price, is_active, admin_id) VALUES (?,30,?,1,?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=1", (app_name, float(p30), admin_id, float(p30)))
+    if p60 and str(p60).strip(): c.execute("INSERT INTO store_bot_pricing(app_name, duration_days, price, is_active, admin_id) VALUES (?,60,?,1,?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=1", (app_name, float(p60), admin_id, float(p60)))
+    if p90 and str(p90).strip(): c.execute("INSERT INTO store_bot_pricing(app_name, duration_days, price, is_active, admin_id) VALUES (?,90,?,1,?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=1", (app_name, float(p90), admin_id, float(p90)))
     conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": f"Prices updated for {app_name}"})
 
 @store_bp.route("/api/admin/store/update_pricing", methods=["POST"])
 def api_admin_store_update_pricing():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_PRICING"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}
     app_name = d.get("app_name")
     
     if not app_name: return jsonify({"status": "error", "message": "App name required"}), 400
     
+    admin_id = session.get("admin_username")
     price_30 = float(d.get("price_30", 0))
     price_60 = float(d.get("price_60", 0))
     price_90 = float(d.get("price_90", 0))
@@ -1026,20 +1238,20 @@ def api_admin_store_update_pricing():
     conn = db_conn(); c = conn.cursor()
     
     # Update or insert for 30 days
-    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status) VALUES (?, 30, ?, ?, ?) ON CONFLICT(app_name, duration_days) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_30, is_active, stock_status, price_30, is_active, stock_status))
+    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status, admin_id) VALUES (?, 30, ?, ?, ?, ?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_30, is_active, stock_status, admin_id, price_30, is_active, stock_status))
     
     # Update or insert for 60 days
-    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status) VALUES (?, 60, ?, ?, ?) ON CONFLICT(app_name, duration_days) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_60, is_active, stock_status, price_60, is_active, stock_status))
+    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status, admin_id) VALUES (?, 60, ?, ?, ?, ?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_60, is_active, stock_status, admin_id, price_60, is_active, stock_status))
     
     # Update or insert for 90 days
-    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status) VALUES (?, 90, ?, ?, ?) ON CONFLICT(app_name, duration_days) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_90, is_active, stock_status, price_90, is_active, stock_status))
+    c.execute("INSERT INTO store_bot_pricing (app_name, duration_days, price, is_active, stock_status, admin_id) VALUES (?, 90, ?, ?, ?, ?) ON CONFLICT(app_name, duration_days, admin_id) DO UPDATE SET price=?, is_active=?, stock_status=?", (app_name, price_90, is_active, stock_status, admin_id, price_90, is_active, stock_status))
     
     conn.commit(); conn.close()
     return jsonify({"status": "ok", "message": "Bot pricing updated successfully"})
 
 @store_bp.route("/api/admin/store/delete_pricing", methods=["POST"])
 def api_admin_store_delete_pricing():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_PRICING"): return jsonify({"status": "error"}), 403
     pid = request.get_json().get("id")
     conn = db_conn(); c = conn.cursor()
     c.execute("DELETE FROM store_bot_pricing WHERE id=?", (pid,)); conn.commit(); conn.close()
@@ -1047,7 +1259,7 @@ def api_admin_store_delete_pricing():
 
 @store_bp.route("/api/admin/store/update_license", methods=["POST"])
 def api_admin_store_update_license():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     d = request.get_json() or {}
     username = d.get("username")
     expiry = d.get("expiry_date")
@@ -1061,7 +1273,7 @@ def api_admin_store_update_license():
 
 @store_bp.route("/api/admin/store/delete_license", methods=["POST"])
 def api_admin_store_delete_license():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"): return jsonify({"status": "error"}), 403
     username = (request.get_json() or {}).get("username")
     if not username: return jsonify({"status": "error"})
     
@@ -1076,10 +1288,25 @@ def api_admin_store_delete_license():
 
 @store_bp.route("/api/admin/store/licenses", methods=["GET"])
 def api_admin_store_licenses():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
+    
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+
+    query_suffix = ""
+    params = ()
+    if not is_super:
+        query_suffix = " AND so.admin_id=?"
+        params = (admin_id,)
+
     # Single JOIN query — fixes N+1 query performance issue
-    c.execute("""
+    c.execute(f"""
         SELECT so.customer_username, so.notes, sc.email, u.machine_id, u.expiry_date, u.status
         FROM store_orders so
         LEFT JOIN store_customers sc ON sc.username = so.customer_username
@@ -1090,8 +1317,8 @@ def api_admin_store_licenses():
             WHERE o2.status='APPROVED'
         ) AS ul ON ul.notes = so.notes
         LEFT JOIN users u ON u.username = json_extract(so.notes, '$.license_key')
-        WHERE so.status='APPROVED'
-    """)
+        WHERE so.status='APPROVED'{query_suffix}
+    """, params)
     data = []
     for row in c.fetchall():
         try:
@@ -1109,9 +1336,24 @@ def api_admin_store_licenses():
 
 @store_bp.route("/api/admin/store/vip_licenses", methods=["GET"])
 def api_admin_store_vip_licenses():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT customer_username, notes FROM store_orders WHERE status='APPROVED'")
+    
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+
+    query_suffix = ""
+    params = ()
+    if not is_super:
+        query_suffix = " AND admin_id=?"
+        params = (admin_id,)
+
+    c.execute(f"SELECT customer_username, notes FROM store_orders WHERE status='APPROVED'{query_suffix}", params)
     orders = c.fetchall()
     c.execute("SELECT username, email FROM store_customers")
     customers = {r[0]: r[1] for r in c.fetchall()}
@@ -1134,12 +1376,24 @@ def api_admin_store_vip_licenses():
 
 @store_bp.route("/api/admin/store/orders", methods=["GET"])
 def api_admin_store_orders():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("STORE_SUB_ADMIN"): return jsonify({"status": "error"}), 403
     conn = db_conn(); c = conn.cursor()
     c.execute("SELECT app_name, required_version FROM bots")
     main_bots_map = {r[0]: r[1] for r in c.fetchall()}
 
-    c.execute("SELECT id, customer_username, notes, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, created_at FROM store_orders ORDER BY id DESC")
+    admin_id = session.get("admin_username")
+    is_super = session.get("role") == "SUPER_ADMIN"
+    
+    ref = request.args.get("ref")
+    if is_super and ref:
+        is_super = False
+        admin_id = ref
+        
+    if is_super:
+        c.execute("SELECT id, customer_username, notes, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, created_at, admin_id FROM store_orders ORDER BY id DESC")
+    else:
+        c.execute("SELECT id, customer_username, notes, total_amount, payment_method, sender_number, transaction_id, payment_screenshot, status, created_at, admin_id FROM store_orders WHERE admin_id=? ORDER BY id DESC", (admin_id,))
+    
     data = []
     for r in c.fetchall():
         try:
@@ -1147,22 +1401,28 @@ def api_admin_store_orders():
         except:
             n = {}
         app_name = n.get("app_name", "")
-        data.append({"id": r[0], "customer": r[1], "app_name": app_name, "version": main_bots_map.get(app_name, "1.0"), "days": n.get("duration_days", 0), "price": r[3], "payment_method": r[4], "sender_number": r[5], "transaction_id": r[6], "payment_screenshot": r[7], "status": r[8], "created_at": r[9], "notes": r[2]})
+        data.append({"id": r[0], "customer": r[1], "app_name": app_name, "version": main_bots_map.get(app_name, "1.0"), "days": n.get("duration_days", 0), "price": r[3], "payment_method": r[4], "sender_number": r[5], "transaction_id": r[6], "payment_screenshot": r[7], "status": r[8], "created_at": r[9], "notes": r[2], "admin_id": r[10]})
     conn.close()
     return jsonify({"status": "ok", "data": data})
 
 @store_bp.route("/api/admin/store/approve", methods=["POST"])
 def api_admin_store_approve():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_ORDERS"): return jsonify({"status": "error"}), 403
     oid = request.get_json().get("order_id")
     conn = db_conn(); c = conn.cursor()
-    c.execute("SELECT customer_username, notes, status FROM store_orders WHERE id=?", (oid,))
+    
+    admin_id_str = session.get("admin_username")
+    if session.get("role") == "SUPER_ADMIN":
+        c.execute("SELECT customer_username, notes, status, admin_id FROM store_orders WHERE id=?", (oid,))
+    else:
+        c.execute("SELECT customer_username, notes, status, admin_id FROM store_orders WHERE id=? AND admin_id=?", (oid, admin_id_str))
+        
     order = c.fetchone()
     
     if not order or order[2] != 'PENDING': 
         conn.close(); return jsonify({"status": "error", "message": "Invalid or already processed order"}), 400
         
-    customer, n_str, _ = order
+    customer, n_str, _, _ = order
     try:
         n = json.loads(n_str) if n_str else {}
     except:
@@ -1178,8 +1438,19 @@ def api_admin_store_approve():
     today = datetime.date.today()
     new_expiry = today + datetime.timedelta(days=days)
     
-    c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?)",
-        (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), customer, 'STORE_CUSTOMER'))
+    order_admin_id_str = order[3]
+    c.execute("SELECT id FROM admins WHERE username=?", (order_admin_id_str,))
+    admin_row = c.fetchone()
+    admin_id_int = admin_row[0] if admin_row else 1
+    
+    c.execute("INSERT INTO users(username, activation_key, status, machine_id, expiry_date, admin_id, created_by_admin_id, created_by_username, created_by_role) VALUES (?,?,?,?,?,?,?,?,?)",
+        (rand_key, rand_key, 'ENABLED', '-', new_expiry.isoformat(), admin_id_int, admin_id_int, customer, 'STORE_CUSTOMER'))
+    
+    new_user_id = c.lastrowid
+    try:
+        c.execute("INSERT INTO admin_user_access(admin_id, user_id) VALUES (?,?)", (admin_id_int, new_user_id))
+    except sqlite3.IntegrityError:
+        pass
         
     if 'ALL TOOLS' in app_name.upper():
         try:
@@ -1219,9 +1490,17 @@ def api_admin_store_approve():
 
 @store_bp.route("/api/admin/store/delete_order", methods=["POST"])
 def api_admin_store_delete_order():
-    if session.get("role") != "SUPER_ADMIN": return jsonify({"status": "error"}), 403
+    if not store_has_perm("MANAGE_STORE_ORDERS"): return jsonify({"status": "error"}), 403
     oid = (request.get_json() or {}).get("order_id")
     conn = db_conn(); c = conn.cursor()
+    
+    admin_id = session.get("admin_username")
+    if session.get("role") != "SUPER_ADMIN":
+        c.execute("SELECT admin_id FROM store_orders WHERE id=?", (oid,))
+        row = c.fetchone()
+        if not row or row[0] != admin_id:
+            conn.close()
+            return jsonify({"status": "error"}), 403
     
     # Auto disable the username when the order is deleted
     c.execute("SELECT notes FROM store_orders WHERE id=?", (oid,))
@@ -1246,8 +1525,18 @@ def api_admin_store_delete_order():
 @store_bp.route("/api/admin/store/reset_customer_password", methods=["POST"])
 def api_admin_store_reset_password():
     """Admin resets a store customer's password securely — no plain text stored."""
-    if session.get("role") != "SUPER_ADMIN":
+    if not store_has_perm("MANAGE_STORE_CUSTOMERS"):
         return jsonify({"status": "error", "message": "Forbidden"}), 403
+    
+    d = request.get_json() or {}
+    customer_id = d.get("id")
+    
+    if session.get("role") != "SUPER_ADMIN":
+        conn = db_conn(); cur = conn.cursor()
+        cur.execute("SELECT admin_id FROM store_customers WHERE id=?", (customer_id,))
+        row = cur.fetchone(); cur.close(); conn.close()
+        if not row or row[0] != session.get("admin_username"):
+            return jsonify({"status": "error"}), 403
 
     d = request.get_json() or {}
     customer_id = d.get("id")

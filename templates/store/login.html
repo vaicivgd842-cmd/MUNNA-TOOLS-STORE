@@ -379,6 +379,11 @@
 
   <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const _urlParams = new URLSearchParams(window.location.search);
+    const _ref = _urlParams.get('ref');
+    if (_ref) {
+      localStorage.setItem('store_ref', _ref);
+    }
 
     function togglePw(id, btn) {
       const inp = document.getElementById(id);

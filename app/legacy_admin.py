@@ -77,8 +77,16 @@ def init_db():
         activation_key TEXT,
         status TEXT,
         machine_id TEXT,
-        expiry_date TEXT
+        expiry_date TEXT,
+        admin_id TEXT
     )''')
+    
+    # Run ALTER TABLE for existing databases
+    c.execute("PRAGMA table_info(users)")
+    user_columns = [col[1] for col in c.fetchall()]
+    if 'admin_id' not in user_columns:
+        c.execute("ALTER TABLE users ADD COLUMN admin_id TEXT")
+        c.execute("UPDATE users SET admin_id = 'munna' WHERE admin_id IS NULL")
 
     # Admin accounts (SUPER_ADMIN or SUB_ADMIN)
     c.execute('''CREATE TABLE IF NOT EXISTS admins (
@@ -207,8 +215,16 @@ def init_db():
             last_seen TEXT NOT NULL,
             sms_count INTEGER NOT NULL DEFAULT 0,
             device_key TEXT,
-            plain_password TEXT
+            plain_password TEXT,
+            admin_id TEXT
         )''')
+    
+    # Run ALTER TABLE for existing databases
+    c.execute("PRAGMA table_info(device_stats)")
+    device_columns = [col[1] for col in c.fetchall()]
+    if 'admin_id' not in device_columns:
+        c.execute("ALTER TABLE device_stats ADD COLUMN admin_id TEXT")
+        c.execute("UPDATE device_stats SET admin_id = 'munna' WHERE admin_id IS NULL")
 
     # Performance Indexes
     c.execute("CREATE INDEX IF NOT EXISTS idx_login_history_username ON login_history(username, logged_at DESC)")
@@ -523,7 +539,7 @@ ALL_PERMS = [
     # Bot management
     "MANAGE_BOT_BLOCKS",
     # Store
-    "VIEW_STORE",
+    "STORE_SUB_ADMIN", "SUB_ADMIN_CUSTOMER_STORE", "MANAGE_STORE_ORDERS", "MANAGE_STORE_PRICING", "MANAGE_STORE_CUSTOMERS",
     # My Account
     "EDIT_PROFILE",
 ]
@@ -632,7 +648,7 @@ def login_page():
 
     conn = db_conn()
     c = conn.cursor()
-    c.execute("SELECT id, password_hash, role, is_active, COALESCE(max_users, 0) FROM admins WHERE username=?", (u,))
+    c.execute("SELECT id, password_hash, role, is_active, COALESCE(max_users, 0), permissions FROM admins WHERE username=?", (u,))
     row = c.fetchone()
     conn.close()
 
@@ -646,7 +662,7 @@ def login_page():
         _log_admin_login(u, ip, 0)  # 0 = Failed
         return "Invalid credentials", 401
 
-    admin_id, pw_hash, role, is_active, max_users = row
+    admin_id, pw_hash, role, is_active, max_users, permissions_json = row
     if not int(is_active):
         return "Admin disabled", 403
 
@@ -669,6 +685,12 @@ def login_page():
     session["admin_username"] = u
     session["role"] = role
     session["max_users"] = int(max_users or 0)
+    
+    import json
+    try:
+        session["permissions"] = json.loads(permissions_json) if permissions_json else []
+    except:
+        session["permissions"] = []
 
     if role == "SUB_ADMIN":
         tg_alert(f"🔐 <b>Sub-Admin Login</b>\n👤 {u}\n🌐 IP: {ip}")
@@ -3218,9 +3240,9 @@ import re
 
 @legacy_bp.route("/api/admin/create_device", methods=["POST"])
 def api_create_device():
-    guard = require_super_admin_json()
-    if guard:
-        return guard
+    # Only allow SUPER_ADMIN or SUB_ADMIN with VIEW_STORE/MANAGE_STORE
+    if not session.get("logged_in") or session.get("role") not in ["SUPER_ADMIN", "SUB_ADMIN"]:
+        return jsonify({"status": "error", "message": "Permission denied"}), 403
 
     conn = db_conn()
     c = conn.cursor()
@@ -3252,9 +3274,11 @@ def api_create_device():
             ),
         )
         
+        admin_id = session.get("admin_username", "munna")
+        
         c.execute(
-            "INSERT INTO device_stats (username, last_seen, sms_count, device_key, plain_password) VALUES (?, ?, 0, ?, ?)",
-            (username, datetime.datetime.utcnow().isoformat(), device_key, password)
+            "INSERT INTO device_stats (username, last_seen, sms_count, device_key, plain_password, admin_id) VALUES (?, ?, 0, ?, ?, ?)",
+            (username, datetime.datetime.utcnow().isoformat(), device_key, password, admin_id)
         )
         
         conn.commit()
@@ -3273,42 +3297,54 @@ def api_create_device():
 
 @legacy_bp.route("/api/admin/devices", methods=["GET"])
 def api_admin_devices():
-    guard = require_super_admin_json()
-    if guard:
-        return guard
+    if not session.get("logged_in") or session.get("role") not in ["SUPER_ADMIN", "SUB_ADMIN"]:
+        return jsonify({"status": "error", "message": "Permission denied"}), 403
 
     conn = db_conn()
     c = conn.cursor()
-    c.execute(
-        """
-        SELECT a.username, a.created_at, ds.last_seen, ds.sms_count, ds.device_key, ds.plain_password
-        FROM admins a
-        LEFT JOIN device_stats ds ON a.username = ds.username
-        WHERE a.role = 'DEVICE'
-        ORDER BY a.id DESC
-        """
-    )
+    
+    if session.get("role") == "SUPER_ADMIN":
+        c.execute(
+            """
+            SELECT a.username, a.created_at, ds.last_seen, ds.sms_count, ds.device_key, ds.plain_password, ds.admin_id
+            FROM admins a
+            LEFT JOIN device_stats ds ON a.username = ds.username
+            WHERE a.role = 'DEVICE'
+            ORDER BY a.id DESC
+            """
+        )
+    else:
+        admin_id = session.get("admin_username")
+        c.execute(
+            """
+            SELECT a.username, a.created_at, ds.last_seen, ds.sms_count, ds.device_key, ds.plain_password, ds.admin_id
+            FROM admins a
+            JOIN device_stats ds ON a.username = ds.username
+            WHERE a.role = 'DEVICE' AND ds.admin_id = ?
+            ORDER BY a.id DESC
+            """, (admin_id,)
+        )
     rows = c.fetchall()
     conn.close()
 
     devices = []
-    for username, created_at, last_seen, sms_count, device_key, plain_password in rows:
+    for username, created_at, last_seen, sms_count, device_key, plain_password, d_admin_id in rows:
         devices.append({
             "username": username,
             "created_at": created_at,
             "last_seen": last_seen,
             "sms_count": sms_count or 0,
             "device_key": device_key or "N/A",
-            "plain_password": plain_password or "N/A"
+            "plain_password": plain_password or "N/A",
+            "admin_id": d_admin_id or "munna"
         })
 
     return jsonify({"status": "ok", "data": devices})
 
 @legacy_bp.route("/api/admin/delete_device", methods=["POST"])
 def api_admin_delete_device():
-    guard = require_super_admin_json()
-    if guard:
-        return guard
+    if not session.get("logged_in") or session.get("role") not in ["SUPER_ADMIN", "SUB_ADMIN"]:
+        return jsonify({"status": "error", "message": "Permission denied"}), 403
 
     d = request.get_json() or {}
     username = (d.get("username") or "").strip()
@@ -3317,6 +3353,14 @@ def api_admin_delete_device():
 
     conn = db_conn()
     c = conn.cursor()
+    
+    # If sub-admin, verify ownership
+    if session.get("role") != "SUPER_ADMIN":
+        c.execute("SELECT admin_id FROM device_stats WHERE username=?", (username,))
+        row = c.fetchone()
+        if not row or row[0] != session.get("admin_username"):
+            conn.close()
+            return jsonify({"status": "error", "message": "Permission denied"}), 403
     
     # Delete from admins and device_stats
     c.execute("DELETE FROM admins WHERE username=? AND role='DEVICE'", (username,))
@@ -3407,11 +3451,4 @@ def api_device_ping():
     return jsonify({"status": "success", "message": "Ping received"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
-    # Production security reminders
-    if port != 5000 or os.environ.get("PRODUCTION"):
-        print("[SECURITY] Production mode detected. Reminders:")
-        print("[SECURITY]   • Put this server behind nginx + HTTPS (never expose Flask directly).")
-        print("[SECURITY]   • SECRET_KEY is auto-generated and saved to .secret_key — back it up.")
-        print("[SECURITY]   • Set FAILED_LOGIN_LIMIT and CK_RATE_LIMIT env vars to tune rate limits.")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    print("This file is a blueprint module. Please run the application using 'run.py' or gunicorn instead.")

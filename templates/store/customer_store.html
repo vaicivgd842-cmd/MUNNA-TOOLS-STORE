@@ -528,7 +528,8 @@
         document.getElementById('pay_username').value = '';
         gotoStep1();
 
-        let r = await fetch('/api/store/payment_methods');
+        let refParam = localStorage.getItem('store_ref') || 'munna';
+        let r = await fetch('/api/store/payment_methods?ref=' + refParam);
         let j = await r.json();
         if (j.status === 'ok' && j.data.length > 0) {
             _allPaymentMethods = j.data;

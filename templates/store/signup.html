@@ -326,10 +326,15 @@
       btn.classList.add('loading'); btn.disabled = true;
 
       try {
+        // Get admin_id from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        let refAdmin = urlParams.get('ref') || localStorage.getItem('store_ref') || 'munna';
+        localStorage.setItem('store_ref', refAdmin); // persist across reloads
+
         const r = await fetch('/api/store/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-          body: JSON.stringify({ full_name: name, email: email, phone_number: phone, username: u, password: p })
+          body: JSON.stringify({ full_name: name, email: email, phone_number: phone, username: u, password: p, admin_id: refAdmin })
         });
         const j = await r.json();
 
