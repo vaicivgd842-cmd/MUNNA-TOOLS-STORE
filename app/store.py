@@ -116,8 +116,25 @@ def init_store_db():
         c.execute("ALTER TABLE store_bot_pricing ADD COLUMN stock_status TEXT NOT NULL DEFAULT 'Available'")
     if 'admin_id' not in p_columns:
         c.execute("ALTER TABLE store_bot_pricing ADD COLUMN admin_id TEXT NOT NULL DEFAULT 'munna'")
-        # Also we need to recreate the UNIQUE index since sqlite doesn't allow ALTER TABLE ADD CONSTRAINT
-        # But for now, just having the column will prevent 500 errors.
+        
+    c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='store_bot_pricing'")
+    sql = c.fetchone()
+    if sql and "UNIQUE(app_name, duration_days)" in sql[0].replace(" ", ""):
+        # Recreate table to fix unique constraint
+        c.execute("ALTER TABLE store_bot_pricing RENAME TO store_bot_pricing_old")
+        c.execute('''CREATE TABLE store_bot_pricing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_name TEXT NOT NULL,
+            duration_days INTEGER NOT NULL,
+            price REAL NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            stock_status TEXT NOT NULL DEFAULT 'Available',
+            admin_id TEXT NOT NULL DEFAULT 'munna',
+            UNIQUE(app_name, duration_days, admin_id)
+        )''')
+        c.execute('''INSERT INTO store_bot_pricing (id, app_name, duration_days, price, is_active, stock_status, admin_id)
+                     SELECT id, app_name, duration_days, price, is_active, stock_status, admin_id FROM store_bot_pricing_old''')
+        c.execute("DROP TABLE store_bot_pricing_old")
 
     c.execute('''CREATE TABLE IF NOT EXISTS store_payment_methods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
