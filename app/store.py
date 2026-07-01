@@ -119,7 +119,7 @@ def init_store_db():
         
     c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='store_bot_pricing'")
     sql = c.fetchone()
-    if sql and "UNIQUE(app_name, duration_days)" in sql[0].replace(" ", ""):
+    if sql and "UNIQUE" in sql[0] and "admin_id" not in sql[0].split("UNIQUE")[-1]:
         # Recreate table to fix unique constraint
         c.execute("ALTER TABLE store_bot_pricing RENAME TO store_bot_pricing_old")
         c.execute('''CREATE TABLE store_bot_pricing (
