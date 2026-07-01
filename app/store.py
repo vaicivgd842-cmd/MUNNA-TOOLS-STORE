@@ -114,6 +114,10 @@ def init_store_db():
         c.execute("ALTER TABLE store_bot_pricing ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
     if 'stock_status' not in p_columns:
         c.execute("ALTER TABLE store_bot_pricing ADD COLUMN stock_status TEXT NOT NULL DEFAULT 'Available'")
+    if 'admin_id' not in p_columns:
+        c.execute("ALTER TABLE store_bot_pricing ADD COLUMN admin_id TEXT NOT NULL DEFAULT 'munna'")
+        # Also we need to recreate the UNIQUE index since sqlite doesn't allow ALTER TABLE ADD CONSTRAINT
+        # But for now, just having the column will prevent 500 errors.
 
     c.execute('''CREATE TABLE IF NOT EXISTS store_payment_methods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

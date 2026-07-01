@@ -230,6 +230,15 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_login_history_username ON login_history(username, logged_at DESC)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_admin ON audit_log(admin_username, created_at DESC)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_device_stats_username ON device_stats(username)")
+
+    # Migration for missing admin_user_access entries (backwards compatibility)
+    try:
+        c.execute("SELECT id, admin_id FROM users WHERE admin_id IS NOT NULL")
+        for u_id, a_id in c.fetchall():
+            c.execute("INSERT OR IGNORE INTO admin_user_access (admin_id, user_id) VALUES (?,?)", (a_id, u_id))
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
